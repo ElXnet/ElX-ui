@@ -39,17 +39,38 @@ type Receipt struct {
 // Ingest trusts authenticatedNode only when derived from verified node mTLS.
 // A stream and its period must be provisioned before any data is accepted.
 func Ingest(ctx context.Context, db *sql.DB, authenticatedNode uuid.UUID, s Sample) (Receipt, error) {
-	if authenticatedNode == uuid.Nil || authenticatedNode != s.NodeID ||
-		s.ExecutorID == uuid.Nil || s.Incarnation == uuid.Nil || s.AccountingID == uuid.Nil ||
-		s.Generation <= 0 || s.PeriodID == uuid.Nil || s.Sequence <= 0 || s.SampledAt.IsZero() ||
-		s.UpBytes < 0 || s.DownBytes < 0 {
-		return Receipt{}, ErrSample
+	if err := validateSample(authenticatedNode, s); err != nil {
+		return Receipt{}, err
 	}
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return Receipt{}, err
 	}
 	defer tx.Rollback()
+	out, err := ingestSample(ctx, tx, s)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Receipt{}, err
+	}
+	return out, nil
+}
+
+func validateSample(authenticatedNode uuid.UUID, s Sample) error {
+	if authenticatedNode == uuid.Nil || authenticatedNode != s.NodeID ||
+		s.ExecutorID == uuid.Nil || s.Incarnation == uuid.Nil || s.AccountingID == uuid.Nil ||
+		s.Generation <= 0 || s.PeriodID == uuid.Nil || s.Sequence <= 0 || s.SampledAt.IsZero() ||
+		s.UpBytes < 0 || s.DownBytes < 0 {
+		return ErrSample
+	}
+	return nil
+}
+
+// ingestSample performs the cumulative high-watermark write and FUP threshold
+// transition within the caller's transaction. The collector also holds pinned
+// core identity/assignment locks in this same transaction.
+func ingestSample(ctx context.Context, tx *sql.Tx, s Sample) (Receipt, error) {
 	key := []any{s.NodeID, s.ExecutorID, s.Incarnation, s.AccountingID, s.Generation, s.PeriodID}
 	const where = `node_id=$1 AND executor_id=$2 AND incarnation=$3 AND accounting_id=$4 AND generation=$5 AND period_id=$6`
 	var seq, up, down int64
@@ -109,9 +130,6 @@ func Ingest(ctx context.Context, db *sql.DB, authenticatedNode uuid.UUID, s Samp
 			return Receipt{}, err
 		}
 		out.Crossed = count == 1
-	}
-	if err := tx.Commit(); err != nil {
-		return Receipt{}, err
 	}
 	return out, nil
 }
