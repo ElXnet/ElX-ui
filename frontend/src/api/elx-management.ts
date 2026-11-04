@@ -11,6 +11,7 @@ export interface Reconcile {entitlementId:string; active:boolean; queued:number;
 export interface RevokeResult {deviceId:string;revoked:boolean;alreadyRevoked:boolean;drainQueued:number;undrainable:number}
 export interface ScheduleSpec { scheduleId:string; cadence:'day'|'week'|'month'; timezone:string; direction:'up'|'down'|'total'; thresholdBytes:number; reducedUp:number; reducedDown:number }
 export interface ScheduleCreated { scheduleId:string; periodId:string; startsAt:string; endsAt:string; alreadyExisted:boolean }
+export interface Activation { scheduleId:string;enabled:boolean;alreadyEnabled:boolean;coverage:SignedCoverage }
 
 async function request<T>(path:string,post=false,payload?:unknown):Promise<T> {
  const result=post?await HttpUtil.post<T>('/panel/api/elx'+path,payload,{silent:true,headers:payload?{'Content-Type':'application/json'}:undefined}):await HttpUtil.get<T>('/panel/api/elx'+path,undefined,{silent:true});
@@ -24,6 +25,7 @@ export const elxManagement={
  reconcile:(id:string)=>request<Reconcile>('/entitlements/'+encodeURIComponent(id)+'/reconcile-fup',true),
  revoke:(id:string,device:string)=>request<RevokeResult>('/entitlements/'+encodeURIComponent(id)+'/devices/'+encodeURIComponent(device)+'/revoke',true),
  createSchedule:(id:string,spec:ScheduleSpec)=>request<ScheduleCreated>('/entitlements/'+encodeURIComponent(id)+'/fup-schedules',true,spec),
+ activateSchedule:(id:string,schedule:string)=>request<Activation>('/entitlements/'+encodeURIComponent(id)+'/fup-schedules/'+encodeURIComponent(schedule)+'/activate',true),
 };
 export const mbps=(bytesPerSecond:number):string=>(bytesPerSecond*8/1_000_000).toLocaleString('ru-RU',{maximumFractionDigits:2})+' Мбит/с';
 export const occupancy=(e:Entitlement):string=>e.occupied+' / '+e.activeSlots;
