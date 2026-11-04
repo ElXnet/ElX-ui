@@ -96,9 +96,7 @@ func ingestSample(ctx context.Context, tx *sql.Tx, s Sample) (Receipt, error) {
 		if s.Sequence == seq && (s.UpBytes != up || s.DownBytes != down) {
 			return Receipt{}, ErrConflict
 		}
-		if err := tx.Commit(); err != nil {
-			return Receipt{}, err
-		}
+		// Transaction owner commits after all pinned identity checks.
 		return Receipt{Sequence: seq, Duplicate: true}, nil
 	}
 	if s.UpBytes < up || s.DownBytes < down {
