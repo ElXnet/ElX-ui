@@ -154,7 +154,8 @@ func (j *ElXProfileJob) apply(task *elxProfileJob,inbounds []int)error{
 	expiry:=task.ValidUntil.UnixMilli()
 	if expiry<=time.Now().UnixMilli(){return errors.New("paid profile is already expired")}
 	record,err:=j.clientService.GetRecordByEmail(nil,task.ClientEmail)
-	if err!=nil&&!errors.Is(err,gorm.ErrRecordNotFound){return err}
+	if errors.Is(err,gorm.ErrRecordNotFound){record=nil;err=nil}
+	if err!=nil{return err}
 	if record!=nil &&
 		(record.UUID!=task.VLESSID||record.SubID!=task.SubscriptionID){
 		return errors.New("existing panel credentials do not match Control")
