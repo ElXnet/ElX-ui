@@ -6,6 +6,10 @@ on:
     paths:
       - "cmd/elx-control/**"
       - "internal/web/controller/elx_management*.go"
+      - "internal/web/controller/lk*.go"
+      - "frontend/lk.html"
+      - "frontend/src/entries/lk.tsx"
+      - "frontend/vite.config.js"
       - "frontend/src/api/elx-management.ts"
       - "frontend/src/pages/elx/**"
       - "frontend/src/test/elx-management.test.ts"
@@ -86,7 +90,7 @@ jobs:
           cache: false
       - name: Verify Control / panel compile and authorization tests
         run: |
-          go test ./internal/elxcontrol/management ./cmd/elx-control ./internal/web/controller -run 'TestManagement|TestCheckAPIAuth|TestPanelUpdateRequiresNodeAdminScope' -count=1
+          go test ./internal/elxcontrol/management ./internal/elxcontrol/lk ./cmd/elx-control ./internal/web/controller -run 'TestManagement|TestLK|TestCheckAPIAuth|TestPanelUpdateRequiresNodeAdminScope' -count=1
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
@@ -96,3 +100,4 @@ jobs:
           npm ci
           npm run typecheck
           npm test -- src/test/elx-management.test.ts
+          npm run build
