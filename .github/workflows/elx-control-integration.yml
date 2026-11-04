@@ -4,9 +4,9 @@ on:
   push:
     branches: [elx-control-journal, feat/elx-management-stage3]
     paths:
-      - "cmd/elx-control/**"
       - "internal/web/controller/elx_management*.go"
       - "internal/web/controller/lk*.go"
+      - "internal/web/web.go"
       - "frontend/lk.html"
       - "frontend/src/entries/lk.tsx"
       - "frontend/vite.config.js"
@@ -15,6 +15,8 @@ on:
       - "frontend/src/test/elx-management.test.ts"
       - "frontend/src/routes/panelRoutes.tsx"
       - "internal/web/translation/**"
+      - "docs/elx/**"
+      - "cmd/elx-control/**"
       - "internal/elxcontrol/**"
       - "scripts/elx-*.sh"
       - "scripts/elx-*.py"
@@ -22,27 +24,32 @@ on:
       - ".github/workflows/elx-control-integration.yml"
       - "go.mod"
       - "go.sum"
+  pull_request:
+    branches: [elx-control-journal, main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  control-parity:
+  repository-boundary:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout UI integration branch
+        uses: actions/checkout@v5
         with:
           path: ElX-ui
-      - uses: actions/checkout@v5
+      - name: Checkout canonical Control
+        uses: actions/checkout@v5
         with:
           repository: ElXnet/ElX-control
           ref: feat/elx-management-stage3
           path: ElX-control
-      - name: Reject Control mirror divergence
-        run: python3 ElX-control/scripts/check-control-parity.py "$GITHUB_WORKSPACE"
-  local-suite:
+      - name: Reject embedded Control implementations
+        run: python3 ElX-control/scripts/check-repository-boundary.py "$GITHUB_WORKSPACE"
+
+  control-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -59,36 +66,31 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 20
-
     steps:
-      - name: Checkout ElX-ui integration branch
+      - name: Checkout standalone Control branch
         uses: actions/checkout@v5
         with:
-          path: ElX-ui
-
+          repository: ElXnet/ElX-control
+          ref: feat/elx-management-stage3
+          path: ElX-control
       - name: Checkout ElXray integration branch
         uses: actions/checkout@v5
         with:
           repository: ElXnet/ElXray
           ref: restrict-runtime-unlimited
           path: ElXray
-
-      - name: Setup Go toolchain
+      - name: Set up Go from Control module
         uses: actions/setup-go@v6
         with:
-          go-version-file: ElX-ui/go.mod
+          go-version-file: ElX-control/go.mod
           cache: false
-
-      - name: Check tooling and revisions
+      - name: Print tested revisions
         run: |
           go version
-          python3 --version
-          gcc --version | head -1
-          git -C ElX-ui rev-parse HEAD
+          git -C ElX-control rev-parse HEAD
           git -C ElXray rev-parse HEAD
-
-      - name: Run race, PostgreSQL, policy and VLESS integration suite
-        working-directory: ElX-ui
+      - name: Run standalone Control and ElXray integration suite
+        working-directory: ElX-control
         env:
           ELX_CONTROL_POSTGRES_DSN: "host=127.0.0.1 port=5432 user=elx dbname=elx_test password=elx_ci_only sslmode=disable"
         run: bash scripts/elx-test-local.sh
@@ -102,13 +104,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Verify Control / panel compile and authorization tests
+      - name: Compile panel and verify privileged and customer proxies
         run: |
-          go test ./internal/elxcontrol/management ./internal/elxcontrol/lk ./cmd/elx-control ./internal/web/controller -run 'TestManagement|TestLK|TestCheckAPIAuth|TestPanelUpdateRequiresNodeAdminScope' -count=1
+          go test ./internal/web/controller -run 'TestManagement|TestLK|TestCheckAPIAuth|TestPanelUpdateRequiresNodeAdminScope' -count=1
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
-      - name: Validate UI types and regression tests
+      - name: Typecheck, test and build panel and customer portal
         working-directory: frontend
         run: |
           npm ci
