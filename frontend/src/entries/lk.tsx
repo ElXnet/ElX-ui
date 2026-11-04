@@ -249,9 +249,9 @@ function LKApp(){
        {p.scheduleId && (() => {
         const coverage = (detail.usageCoverage ?? []).find(x => x.scheduleId === p.scheduleId);
         return coverage?.ready
-         ? <Alert type="success" showIcon title="Источники подписанного учёта подключены" description="Базовые замеры получены. Проверьте также работу агента, lease и исполнение политики ElXray."/>
+         ? <Alert type="success" showIcon title="Источники подписанного учёта подключены" description="Свежие подписанные показания получены. Отдельно проверьте обязательный lease и применение политики ElXray."/>
          : <Alert type="warning" showIcon title="Учёт трафика ещё не готов" description={coverage
-          ? 'Подключено потоков: '+coverage.assignedGrants+' из '+coverage.expectedGrants+', подтверждённый исходный замер: '+coverage.primedGrants
+          ? 'Привязано: '+coverage.assignedGrants+' из '+coverage.expectedGrants+', исходный замер: '+coverage.primedGrants+', свежие подписанные показания: '+coverage.freshGrants
           : 'Нет подтверждённых назначений потоков. Нельзя считать FUP действующим.'}/>;
        })()}
       </Card>)}
