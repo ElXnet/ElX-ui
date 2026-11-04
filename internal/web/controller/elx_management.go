@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/session"
-
-	"github.com/gin-gonic/gin"
 )
 
 // This bridge exposes a fixed set of server-owned Control paths; the caller
