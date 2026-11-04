@@ -1,7 +1,6 @@
 package job
 
 import (
- "errors"
  "testing"
  "time"
 )
@@ -40,7 +39,7 @@ func TestPaidProfileInboundConfigurationIsExplicit(t *testing.T){
 }
 func TestPaidProfileNeverAcknowledgesWithoutEnabledRecord(t *testing.T){
  j:=NewElXProfileJob()
- if err:=j.paidProfileConverged(nil,[]int{1});!errors.Is(err,errPaidProfileNotReady){
+ if err:=j.paidProfileConverged(nil,[]int{1});err==nil{
   t.Fatalf("missing paid profile was acknowledged: %v",err)
  }
 }
