@@ -3,6 +3,7 @@ package corepolicy
 import (
 	"context"
 	"net"
+	"sync/atomic"
 	"testing"
 
 	wire "github.com/mhsanaei/3x-ui/v3/internal/elxcontrol/corepolicy/wire"
@@ -12,13 +13,15 @@ import (
 
 type policyServer struct {
 	wire.UnimplementedSubscriptionServiceServer
+	writes atomic.Int32
 }
 
-func (policyServer) SetSubscription(_ context.Context, req *wire.SetSubscriptionRequest) (*wire.Subscription, error) {
+func (s *policyServer) SetSubscription(_ context.Context, req *wire.SetSubscriptionRequest) (*wire.Subscription, error) {
+	s.writes.Add(1)
 	return &wire.Subscription{Id: req.Id, Revision: req.Revision}, nil
 }
 
-func (policyServer) GetSubscription(context.Context, *wire.GetSubscriptionRequest) (*wire.Subscription, error) {
+func (*policyServer) GetSubscription(context.Context, *wire.GetSubscriptionRequest) (*wire.Subscription, error) {
 	return &wire.Subscription{Id: "test", Revision: 2, UplinkBps: 100, DownlinkBps: 200}, nil
 }
 
@@ -28,7 +31,8 @@ func TestApplyVerifiesLiveState(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := grpc.NewServer()
-	wire.RegisterSubscriptionServiceServer(server, policyServer{})
+	core := new(policyServer)
+	wire.RegisterSubscriptionServiceServer(server, core)
 	go server.Serve(listener)
 	t.Cleanup(server.Stop)
 	conn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -38,6 +42,9 @@ func TestApplyVerifiesLiveState(t *testing.T) {
 	client := &Client{conn: conn, rpc: wire.NewSubscriptionServiceClient(conn)}
 	t.Cleanup(func() { client.Close() })
 	desired := Policy{ID: "test", Revision: 2, UplinkBps: 100, DownlinkBps: 200}
+	if _, err := client.ApplyWithProof(context.Background(), desired, "op"); err == nil || core.writes.Load() != 0 {
+		t.Fatal("non-durable core accepted managed apply")
+	}
 	if err := client.Apply(context.Background(), desired); err != nil {
 		t.Fatal(err)
 	}

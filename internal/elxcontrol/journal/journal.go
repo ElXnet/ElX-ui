@@ -151,3 +151,12 @@ func Pending(ctx context.Context, db *sql.DB, target Target) (Command, error) {
 		target.NodeID, target.ResourceID).Scan(&cmd.ID, &cmd.ExpectedRevision, &cmd.Payload)
 	return cmd, err
 }
+
+// Lookup finds the original command even after its receipt was committed.
+func Lookup(ctx context.Context, db *sql.DB, target Target, operationID string) (Command, error) {
+	cmd := Command{ID: operationID}
+	err := db.QueryRowContext(ctx, `SELECT revision-1, payload FROM elx_operations
+		WHERE node_id=$1 AND resource_id=$2 AND operation_id=$3`,
+		target.NodeID, target.ResourceID, operationID).Scan(&cmd.ExpectedRevision, &cmd.Payload)
+	return cmd, err
+}
