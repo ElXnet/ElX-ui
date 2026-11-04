@@ -2830,6 +2830,69 @@ export const sections: readonly Section[] = [
   },
 
   {
+    id: 'elx-control-management',
+    title: 'ElX Control — administrator management',
+    description:
+      'Privileged, fixed-path proxy to a local Unix-socket Control service. These endpoints require a panel administrator identity or an admin-scoped bearer token; a customer subscription URL, node-sync token or login to the separate /lk customer cabinet is insufficient. Signed ElXray fences are required to release session slots. A new FUP schedule is staged until an operator explicitly activates it after verifying fresh signed usage.',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/panel/api/elx/entitlements',
+        summary: 'List purchased entitlements (administrator only).',
+        params: [
+          { name: 'limit', in: 'query', type: 'integer', optional: true, defaultValue: 50 },
+          { name: 'after', in: 'query', type: 'string', optional: true },
+        ],
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/elx/entitlements/:id',
+        summary: 'View devices, sessions, shared rates, FUP and signed-usage coverage.',
+        params: [{ name: 'id', in: 'path', type: 'string', desc: 'Canonical entitlement UUID.' }],
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/elx/entitlements/:id/sessions/:owner/drain',
+        summary: 'Queue a VPN session drain; hold the device slot until a signed core fence.',
+        params: [
+          { name: 'id', in: 'path', type: 'string', desc: 'Canonical entitlement UUID.' },
+          { name: 'owner', in: 'path', type: 'string', desc: 'Session owner UUID.' },
+        ],
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/elx/entitlements/:id/devices/:device/revoke',
+        summary: 'Revoke a purchased device and durably request draining its sessions.',
+        params: [
+          { name: 'id', in: 'path', type: 'string', desc: 'Canonical entitlement UUID.' },
+          { name: 'device', in: 'path', type: 'string', desc: 'Device UUID.' },
+        ],
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/elx/entitlements/:id/fup-schedules',
+        summary: 'Create an inactive daily, weekly or monthly FUP rule for later activation.',
+        params: [{ name: 'id', in: 'path', type: 'string', desc: 'Canonical entitlement UUID.' }],
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/elx/entitlements/:id/fup-schedules/:schedule/activate',
+        summary: 'Activate staged FUP only when all grants have fresh signed accounting.',
+        params: [
+          { name: 'id', in: 'path', type: 'string', desc: 'Canonical entitlement UUID.' },
+          { name: 'schedule', in: 'path', type: 'string', desc: 'FUP schedule UUID.' },
+        ],
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/elx/entitlements/:id/reconcile-fup',
+        summary: 'Queue signed FUP speed reductions; do not free budget before core barriers.',
+        params: [{ name: 'id', in: 'path', type: 'string', desc: 'Canonical entitlement UUID.' }],
+      },
+    ],
+  },
+
+  {
     id: 'websocket',
     title: 'WebSocket',
     description:
