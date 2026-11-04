@@ -42,7 +42,7 @@ func TestApplyVerifiesLiveState(t *testing.T) {
 	client := &Client{conn: conn, rpc: wire.NewSubscriptionServiceClient(conn)}
 	t.Cleanup(func() { client.Close() })
 	desired := Policy{ID: "test", Revision: 2, UplinkBps: 100, DownlinkBps: 200}
-	if _, err := client.ApplyWithProof(context.Background(), desired, "op"); err == nil || core.writes.Load() != 0 {
+	if _, err := client.ApplyWithProof(context.Background(), desired, "op", make([]byte, 32)); err == nil || core.writes.Load() != 0 {
 		t.Fatal("non-durable core accepted managed apply")
 	}
 	if err := client.Apply(context.Background(), desired); err != nil {

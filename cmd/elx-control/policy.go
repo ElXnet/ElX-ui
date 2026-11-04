@@ -16,10 +16,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/mhsanaei/3x-ui/v3/internal/elxcontrol/corepolicy"
 	"github.com/mhsanaei/3x-ui/v3/internal/elxcontrol/journal"
 	"github.com/mhsanaei/3x-ui/v3/internal/elxcontrol/policytransport"
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -40,23 +40,27 @@ func transportTLS() (*tls.Config, error) {
 	return &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}, RootCAs: ca, ClientCAs: ca}, nil
 }
 
-func loadBinding() (policytransport.Binding, error) {
-	var binding policytransport.Binding
+func loadBindings() ([]policytransport.Binding, error) {
 	data, err := os.ReadFile(os.Getenv("ELX_POLICY_BINDING"))
 	if err != nil {
-		return binding, err
+		return nil, err
 	}
-	if err := json.Unmarshal(data, &binding); err != nil {
-		return binding, err
+	var bindings []policytransport.Binding
+	if err := json.Unmarshal(data, &bindings); err != nil {
+		var binding policytransport.Binding
+		if err := json.Unmarshal(data, &binding); err != nil {
+			return nil, err
+		}
+		bindings = []policytransport.Binding{binding}
 	}
-	if !binding.Valid() {
-		return binding, errors.New("invalid policy binding")
+	if err := policytransport.ValidateBindings(bindings); err != nil {
+		return nil, err
 	}
-	return binding, nil
+	return bindings, nil
 }
 
 func servePolicy(ctx context.Context, db *sql.DB) error {
-	binding, err := loadBinding()
+	bindings, err := loadBindings()
 	if err != nil {
 		return err
 	}
@@ -75,7 +79,7 @@ func servePolicy(ctx context.Context, db *sql.DB) error {
 	}
 	defer listener.Close()
 	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(cfg)), grpc.MaxRecvMsgSize(4096))
-	if err := policytransport.Register(server, db, binding); err != nil {
+	if err := policytransport.Register(server, db, bindings...); err != nil {
 		return err
 	}
 	stop := context.AfterFunc(ctx, server.Stop)
@@ -88,11 +92,13 @@ func servePolicy(ctx context.Context, db *sql.DB) error {
 }
 
 func enqueuePolicy(ctx context.Context, db *sql.DB, args []string) error {
-	binding, err := loadBinding()
+	bindings, err := loadBindings()
 	if err != nil {
 		return err
 	}
 	fs := flag.NewFlagSet("enqueue-policy", flag.ContinueOnError)
+	node := fs.String("node", "", "node UUID")
+	resource := fs.String("resource", "", "resource UUID")
 	op := fs.String("operation", "", "stable UUID for retries")
 	expected := fs.Int64("expected", -1, "expected journal revision")
 	up := fs.Uint64("up", 0, "upload bytes per second")
@@ -106,11 +112,25 @@ func enqueuePolicy(ctx context.Context, db *sql.DB, args []string) error {
 	if fs.NArg() != 0 || err != nil || id == uuid.Nil || id.String() != *op || !rates.Valid() || *expected < 0 || *expected > 1<<63-3 {
 		return errors.New("valid operation UUID, expected revision and positive rates required")
 	}
+	var target journal.Target
+	if len(bindings) == 1 && *node == "" && *resource == "" {
+		target = bindings[0].Target
+	} else {
+		for _, b := range bindings {
+			if b.Target.NodeID == *node && b.Target.ResourceID == *resource {
+				target = b.Target
+				break
+			}
+		}
+		if target.NodeID == "" {
+			return errors.New("select a configured binding with -node and -resource")
+		}
+	}
 	payload, err := json.Marshal(rates)
 	if err != nil {
 		return err
 	}
-	rev, err := journal.Enqueue(ctx, db, binding.Target, journal.Command{ID: *op, ExpectedRevision: *expected, Payload: payload})
+	rev, err := journal.Enqueue(ctx, db, target, journal.Command{ID: *op, ExpectedRevision: *expected, Payload: payload})
 	if err == nil {
 		fmt.Println(rev)
 	}

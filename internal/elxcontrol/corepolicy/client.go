@@ -64,19 +64,19 @@ type Policy struct {
 // Apply checks the live policy after the RPC. Its result only proves live
 // state and must never be used as a durable application receipt.
 func (c *Client) Apply(ctx context.Context, desired Policy) error {
-	_, err := c.apply(ctx, desired, "")
+	_, err := c.apply(ctx, desired, "", nil)
 	return err
 }
 
 // ApplyWithProof requires a signature produced by durable ElXray readback.
-func (c *Client) ApplyWithProof(ctx context.Context, desired Policy, challenge string) ([]byte, error) {
-	if challenge == "" || len(challenge) > 128 {
+func (c *Client) ApplyWithProof(ctx context.Context, desired Policy, challenge string, publicKey ed25519.PublicKey) ([]byte, error) {
+	if challenge == "" || len(challenge) > 128 || len(publicKey) != ed25519.PublicKeySize {
 		return nil, errors.New("invalid policy challenge")
 	}
-	return c.apply(ctx, desired, challenge)
+	return c.apply(ctx, desired, challenge, publicKey)
 }
 
-func (c *Client) apply(ctx context.Context, desired Policy, challenge string) ([]byte, error) {
+func (c *Client) apply(ctx context.Context, desired Policy, challenge string, publicKey ed25519.PublicKey) ([]byte, error) {
 	if desired.ID == "" || desired.Revision < 2 || desired.Revision > math.MaxInt64 ||
 		desired.UplinkBps == 0 || desired.DownlinkBps == 0 {
 		return nil, errors.New("invalid runtime policy")
@@ -86,7 +86,7 @@ func (c *Client) apply(ctx context.Context, desired Policy, challenge string) ([
 	if challenge != "" {
 		// Require durable mode before changing live state.
 		ctx = metadata.AppendToOutgoingContext(ctx, "elx-policy-challenge", challenge)
-		if _, _, err := c.readProof(ctx, desired.ID); err != nil {
+		if _, _, err := c.readProof(ctx, desired.ID, challenge, publicKey); err != nil {
 			return nil, err
 		}
 	}
@@ -103,7 +103,7 @@ func (c *Client) apply(ctx context.Context, desired Policy, challenge string) ([
 	if challenge == "" {
 		policy, err = c.rpc.GetSubscription(ctx, &wire.GetSubscriptionRequest{Id: desired.ID})
 	} else {
-		policy, proof, err = c.readProof(ctx, desired.ID)
+		policy, proof, err = c.readProof(ctx, desired.ID, challenge, publicKey)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read ElXray runtime policy: %w", err)
@@ -116,7 +116,7 @@ func (c *Client) apply(ctx context.Context, desired Policy, challenge string) ([
 	return proof, nil
 }
 
-func (c *Client) readProof(ctx context.Context, id string) (*wire.Subscription, []byte, error) {
+func (c *Client) readProof(ctx context.Context, id, challenge string, key ed25519.PublicKey) (*wire.Subscription, []byte, error) {
 	var header metadata.MD
 	policy, err := c.rpc.GetSubscription(ctx, &wire.GetSubscriptionRequest{Id: id}, grpc.Header(&header))
 	if err != nil {
@@ -130,5 +130,18 @@ func (c *Client) readProof(ctx context.Context, id string) (*wire.Subscription, 
 	if err != nil || len(proof) != ed25519.SignatureSize {
 		return nil, nil, errors.New("invalid durable ElXray proof")
 	}
+	if policy.GetId() != id || !VerifyProof(key, challenge, Policy{
+		ID: policy.GetId(), Revision: policy.GetRevision(), UplinkBps: policy.GetUplinkBps(),
+		DownlinkBps: policy.GetDownlinkBps(), Disabled: policy.GetDisabled(),
+	}, proof) {
+		return nil, nil, errors.New("ElXray durable signature does not match assigned core")
+	}
 	return policy, proof, nil
+}
+
+// VerifyProof checks the Ed25519 readback format implemented by ElXray.
+func VerifyProof(key ed25519.PublicKey, challenge string, p Policy, proof []byte) bool {
+	message := fmt.Appendf(nil, "elx-policy-v1\n%x\n%x\n%d\n%d\n%d\n%t",
+		challenge, p.ID, p.Revision, p.UplinkBps, p.DownlinkBps, p.Disabled)
+	return len(key) == ed25519.PublicKeySize && ed25519.Verify(key, message, proof)
 }

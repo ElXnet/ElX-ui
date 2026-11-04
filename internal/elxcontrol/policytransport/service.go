@@ -2,6 +2,7 @@
 package policytransport
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -10,11 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
-	"github.com/google/uuid"
 	"github.com/mhsanaei/3x-ui/v3/internal/elxcontrol/corepolicy"
 	"github.com/mhsanaei/3x-ui/v3/internal/elxcontrol/journal"
 	"github.com/mhsanaei/3x-ui/v3/internal/elxcontrol/nodeidentity"
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -53,63 +55,102 @@ func (r Rates) Valid() bool {
 }
 
 type Job struct {
-	Operation string
-	Policy    corepolicy.Policy
-	Challenge string
+	PublicKey  ed25519.PublicKey
+	ResourceID string `json:",omitempty"`
+	Operation  string
+	Policy     corepolicy.Policy
+	Challenge  string
 }
 
 type receipt struct {
-	Operation string
-	Proof     []byte
+	ResourceID string `json:",omitempty"`
+	Operation  string
+	Proof      []byte
 }
 
 type server struct {
-	db      *sql.DB
-	binding Binding
+	db    *sql.DB
+	nodes map[string][]Binding
 }
 
-func (s *server) authorize(ctx context.Context) error {
+func (s *server) authorize(ctx context.Context) ([]Binding, error) {
 	id, err := nodeidentity.FromGRPC(ctx)
-	if err != nil || id != s.binding.Target.NodeID {
-		return status.Error(codes.PermissionDenied, "node is not assigned")
+	if err != nil || len(s.nodes[id]) == 0 {
+		return nil, status.Error(codes.PermissionDenied, "node is not assigned")
+	}
+	return s.nodes[id], nil
+}
+
+// ValidateBindings enforces one journal per local subscription and separates
+// signing keys between nodes. A single core can sign for its own subscriptions.
+func ValidateBindings(bindings []Binding) error {
+	if len(bindings) == 0 {
+		return errors.New("at least one policy binding is required")
+	}
+	targets := make(map[journal.Target]bool)
+	subscriptions := make(map[[2]string]bool)
+	nodeKeys := make(map[string][]byte)
+	keyNodes := make(map[string]string)
+	for _, b := range bindings {
+		if !b.Valid() {
+			return errors.New("invalid policy binding")
+		}
+		pair := [2]string{b.Target.NodeID, b.Subscription}
+		if targets[b.Target] || subscriptions[pair] {
+			return errors.New("duplicate node target or local subscription")
+		}
+		key := string(b.PublicKey)
+		if node, ok := keyNodes[key]; ok && node != b.Target.NodeID {
+			return errors.New("policy signing key belongs to another node")
+		}
+		if known := nodeKeys[b.Target.NodeID]; known != nil && !bytes.Equal(known, b.PublicKey) {
+			return errors.New("node bindings require one core signing key")
+		}
+		targets[b.Target], subscriptions[pair] = true, true
+		nodeKeys[b.Target.NodeID], keyNodes[key] = b.PublicKey, b.Target.NodeID
 	}
 	return nil
 }
 
-func (s *server) job(cmd journal.Command) (Job, error) {
+func (b Binding) job(cmd journal.Command) (Job, error) {
 	var rates Rates
 	if !validID(cmd.ID) || cmd.ExpectedRevision < 0 || cmd.ExpectedRevision > math.MaxInt64-2 ||
 		json.Unmarshal(cmd.Payload, &rates) != nil || !rates.Valid() {
 		return Job{}, status.Error(codes.FailedPrecondition, "invalid stored policy operation")
 	}
-	policy := corepolicy.Policy{ID: s.binding.Subscription, Revision: uint64(cmd.ExpectedRevision + 2),
+	policy := corepolicy.Policy{ID: b.Subscription, Revision: uint64(cmd.ExpectedRevision + 2),
 		UplinkBps: rates.Up, DownlinkBps: rates.Down, Disabled: rates.Disabled}
 	challenge := sha256.Sum256(fmt.Appendf(nil, "elx-command-v1\n%s\n%s\n%s\n%d\n%x",
-		s.binding.Target.NodeID, s.binding.Target.ResourceID, cmd.ID, s.binding.Epoch, sha256.Sum256(cmd.Payload)))
-	return Job{Operation: cmd.ID, Policy: policy, Challenge: fmt.Sprintf("%x", challenge)}, nil
+		b.Target.NodeID, b.Target.ResourceID, cmd.ID, b.Epoch, sha256.Sum256(cmd.Payload)))
+	return Job{PublicKey: b.PublicKey, ResourceID: b.Target.ResourceID, Operation: cmd.ID, Policy: policy, Challenge: fmt.Sprintf("%x", challenge)}, nil
 }
 
 func (s *server) next(ctx context.Context, _ *emptypb.Empty) (*wrapperspb.BytesValue, error) {
-	if err := s.authorize(ctx); err != nil {
-		return nil, err
-	}
-	cmd, err := journal.Pending(ctx, s.db, s.binding.Target)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, status.Error(codes.NotFound, "no pending command")
-	}
-	if err != nil {
-		return nil, status.Error(codes.Unavailable, "journal unavailable")
-	}
-	job, err := s.job(cmd)
+	bindings, err := s.authorize(ctx)
 	if err != nil {
 		return nil, err
 	}
-	data, err := json.Marshal(job)
-	return wrapperspb.Bytes(data), err
+	for _, b := range bindings {
+		cmd, err := journal.Pending(ctx, s.db, b.Target)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, status.Error(codes.Unavailable, "journal unavailable")
+		}
+		job, err := b.job(cmd)
+		if err != nil {
+			return nil, err
+		}
+		data, err := json.Marshal(job)
+		return wrapperspb.Bytes(data), err
+	}
+	return nil, status.Error(codes.NotFound, "no pending command")
 }
 
 func (s *server) confirm(ctx context.Context, in *wrapperspb.BytesValue) (*emptypb.Empty, error) {
-	if err := s.authorize(ctx); err != nil {
+	bindings, err := s.authorize(ctx)
+	if err != nil {
 		return nil, err
 	}
 	var ack receipt
@@ -117,24 +158,30 @@ func (s *server) confirm(ctx context.Context, in *wrapperspb.BytesValue) (*empty
 		len(ack.Proof) != ed25519.SignatureSize {
 		return nil, status.Error(codes.InvalidArgument, "invalid policy receipt")
 	}
-	cmd, err := journal.Lookup(ctx, s.db, s.binding.Target, ack.Operation)
+	// Old single-target agents did not include a resource ID.
+	if ack.ResourceID == "" && len(bindings) == 1 {
+		ack.ResourceID = bindings[0].Target.ResourceID
+	}
+	index := slices.IndexFunc(bindings, func(b Binding) bool { return b.Target.ResourceID == ack.ResourceID })
+	if index < 0 {
+		return nil, status.Error(codes.PermissionDenied, "resource is not assigned to this node")
+	}
+	b := bindings[index]
+	cmd, err := journal.Lookup(ctx, s.db, b.Target, ack.Operation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, status.Error(codes.NotFound, "unknown command")
 	}
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "journal unavailable")
 	}
-	job, err := s.job(cmd)
+	job, err := b.job(cmd)
 	if err != nil {
 		return nil, err
 	}
-	p := job.Policy
-	message := fmt.Appendf(nil, "elx-policy-v1\n%x\n%x\n%d\n%d\n%d\n%t",
-		job.Challenge, p.ID, p.Revision, p.UplinkBps, p.DownlinkBps, p.Disabled)
-	if !ed25519.Verify(s.binding.PublicKey, message, ack.Proof) {
+	if !corepolicy.VerifyProof(b.PublicKey, job.Challenge, job.Policy, ack.Proof) {
 		return nil, status.Error(codes.PermissionDenied, "invalid durable policy signature")
 	}
-	err = journal.ConfirmApplied(ctx, s.db, s.binding.Target, cmd.ID, cmd.ExpectedRevision+1, sha256.Sum256(cmd.Payload))
+	err = journal.ConfirmApplied(ctx, s.db, b.Target, cmd.ID, cmd.ExpectedRevision+1, sha256.Sum256(cmd.Payload))
 	switch {
 	case errors.Is(err, journal.ErrRevision), errors.Is(err, journal.ErrReceipt):
 		return nil, status.Error(codes.FailedPrecondition, "receipt conflicts with journal")
@@ -149,11 +196,19 @@ type service interface {
 	confirm(context.Context, *wrapperspb.BytesValue) (*emptypb.Empty, error)
 }
 
-// Register installs the single-binding policy RPC. Callers must configure
+// Register installs policy delivery for provisioned node bindings. Callers must configure
 // dedicated client CA verification on the gRPC server.
-func Register(g *grpc.Server, db *sql.DB, b Binding) error {
-	if db == nil || !b.Valid() {
-		return errors.New("invalid policy delivery binding")
+func Register(g *grpc.Server, db *sql.DB, bindings ...Binding) error {
+	if db == nil {
+		return errors.New("policy journal database is required")
+	}
+	if err := ValidateBindings(bindings); err != nil {
+		return err
+	}
+	nodes := make(map[string][]Binding)
+	for _, b := range bindings {
+		b.PublicKey = slices.Clone(b.PublicKey)
+		nodes[b.Target.NodeID] = append(nodes[b.Target.NodeID], b)
 	}
 	g.RegisterService(&grpc.ServiceDesc{
 		ServiceName: serviceName, HandlerType: (*service)(nil),
@@ -161,7 +216,7 @@ func Register(g *grpc.Server, db *sql.DB, b Binding) error {
 			{MethodName: "Next", Handler: handler("Next", (*server).next)},
 			{MethodName: "Confirm", Handler: handler("Confirm", (*server).confirm)},
 		},
-	}, &server{db: db, binding: b})
+	}, &server{db: db, nodes: nodes})
 	return nil
 }
 
@@ -180,7 +235,7 @@ func handler[Request, Response any](method string, call func(*server, context.Co
 }
 
 type Applier interface {
-	ApplyWithProof(context.Context, corepolicy.Policy, string) ([]byte, error)
+	ApplyWithProof(context.Context, corepolicy.Policy, string, ed25519.PublicKey) ([]byte, error)
 }
 
 // ApplyNext pulls one command, applies it locally and sends its core proof.
@@ -193,11 +248,11 @@ func ApplyNext(ctx context.Context, conn grpc.ClientConnInterface, core Applier)
 	if err := json.Unmarshal(data.Value, &job); err != nil {
 		return err
 	}
-	proof, err := core.ApplyWithProof(ctx, job.Policy, job.Challenge)
+	proof, err := core.ApplyWithProof(ctx, job.Policy, job.Challenge, job.PublicKey)
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(receipt{Operation: job.Operation, Proof: proof})
+	payload, err := json.Marshal(receipt{ResourceID: job.ResourceID, Operation: job.Operation, Proof: proof})
 	if err != nil {
 		return err
 	}
