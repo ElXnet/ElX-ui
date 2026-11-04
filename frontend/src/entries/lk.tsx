@@ -8,6 +8,7 @@ const { Title, Text } = Typography;
 type Account = { id: string; email: string; csrf: string };
 type Entitlements = {items: string[]};
 type CheckoutOrder = {id:string;requestId:string;entitlementId?:string;amountMinor:number;currency:string;extraDevices:number;status:'pending'|'paid';expiresAt:string};
+type PaidProfile = {status:'pending'|'staged'|'active'|'suspended';subscriptionId?:string;expiresAt:string};
 type LKError = {error?:string};
 const rawBase = window.X_UI_BASE_PATH || '/';
 const base = rawBase.replace(/\/$/, '');
@@ -52,6 +53,7 @@ function LKApp(){
  const [items,setItems]=useState<string[]>([]);
  const [selected,setSelected]=useState('');
  const [detail,setDetail]=useState<Detail|null>(null);
+ const [paidProfile,setPaidProfile]=useState<PaidProfile|null>(null);
  const [busy,setBusy]=useState(false);
  const [checking,setChecking]=useState(true);
  const [scheduleOpen,setScheduleOpen]=useState(false);
@@ -72,6 +74,8 @@ function LKApp(){
  async function refreshDetail(id:string){
   const data=await request<Detail>('/entitlements/'+encodeURIComponent(id));
   setDetail(data);
+  await request<PaidProfile>('/entitlements/'+encodeURIComponent(id)+'/profile')
+   .then(setPaidProfile).catch(()=>setPaidProfile(null));
  }
  useEffect(()=>{
   let valid=true;
@@ -89,6 +93,9 @@ function LKApp(){
   request<Detail>('/entitlements/'+encodeURIComponent(selected)).then(data=>{
    if(live)setDetail(data);
   }).catch(err=>{if(live){setDetail(null);apiMessage.error(String(err));}});
+  request<PaidProfile>('/entitlements/'+encodeURIComponent(selected)+'/profile')
+   .then(data=>{if(live)setPaidProfile(data);})
+   .catch(()=>{if(live)setPaidProfile(null);});
   return ()=>{live=false;};
  },[account,selected,apiMessage]);
 
@@ -267,6 +274,16 @@ function LKApp(){
        <Text>Действует до: {new Date(detail.entitlement.validUntil).toLocaleString('ru-RU')}</Text>
        <Text>Занято слотов: {detail.entitlement.occupied} из {detail.entitlement.activeSlots}</Text>
        <Text>Общая скорость: ↑ {detail.rateBudget?formatMbps(detail.rateBudget.up):'не задана'} / ↓ {detail.rateBudget?formatMbps(detail.rateBudget.down):'не задана'}</Text>
+       {paidProfile&&<Alert type={paidProfile.status==='active'?'success':'warning'}
+        title={paidProfile.status==='active'?'VLESS-профиль выдан':'Выпуск профиля: '+paidProfile.status}
+        description={paidProfile.status==='active'&&paidProfile.subscriptionId
+         ? <Space direction="vertical">
+            <Text>Идентификатор подписки (только для клиента):</Text>
+            <Text code copyable>{paidProfile.subscriptionId}</Text>
+            <Text type="secondary">Импортируйте его через настроенный Subscription endpoint. Управление устройствами доступно только после авторизации в ЛК.</Text>
+           </Space>
+         : 'Профиль ещё не активирован. Control ожидает подтверждённых скоростных назначений и политики ElXray.'}/>}
+       {paidProfile&&<Button onClick={()=>refreshDetail(selected)} disabled={busy}>Обновить статус профиля</Button>}
       </Space>
      </Card>
      <Card title="Устройства" size="small">
