@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/elxcontrol/management"
+	"github.com/mhsanaei/3x-ui/v3/internal/elxcontrol/lk"
 )
 
 // serveManagement intentionally has no TCP mode. Operators must protect the
@@ -33,7 +34,10 @@ func serveManagement(ctx context.Context,db *sql.DB) error {
 	defer ln.Close()
 	defer os.Remove(path)
 	if err:=os.Chmod(path,0600);err!=nil{return err}
-	server:=&http.Server{Handler:management.Handler(management.SQLStore{DB:db}),
+	router:=http.NewServeMux()
+	router.Handle("/v1/",management.Handler(management.SQLStore{DB:db}))
+	router.Handle("/lk/v1/",lk.Handler(lk.Store{DB:db}))
+	server:=&http.Server{Handler:router,
 		ReadHeaderTimeout:5*time.Second,IdleTimeout:30*time.Second}
 	done:=make(chan struct{})
 	go func(){
