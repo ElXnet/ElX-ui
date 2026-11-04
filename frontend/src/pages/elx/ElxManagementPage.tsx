@@ -84,7 +84,7 @@ export default function ElxManagementPage() {
   setBusy('schedule');
   try {
    const result=await elxManagement.createSchedule(selected,{scheduleId:scheduleAttempt.current.id,...specInput});
-   messages.success(result.alreadyExisted?'Расписание уже существует':'Расписание FUP создано');
+   messages.success(result.alreadyExisted?'Расписание уже существует':'Расписание создано. Для применения требуются подписанный учёт и активация оператором.');
    scheduleAttempt.current=null;
    setFupOpen(false);
    await refresh();
@@ -195,7 +195,7 @@ export default function ElxManagementPage() {
          <Button loading={busy==='fup'} disabled={busy!==null} onClick={reconcile}>Согласовать FUP</Button>
         </Space>
         {detail.data.periods.map(p=><Card key={p.id} size="small" title={(p.cadence||'Период')+' · '+p.direction}
-          extra={p.fupActive?<Tag color="warning">Снижение активно</Tag>:null}>
+          extra={p.scheduleId && p.scheduleEnabled===false?<Tag>Ожидает активации</Tag>:p.fupActive?<Tag color="warning">Снижение активно</Tag>:null}>
           <Text>{new Date(p.startsAt).toLocaleString('ru-RU')} — {new Date(p.endsAt).toLocaleString('ru-RU')}</Text>
           <Progress percent={Number(percentUsed(p).toFixed(1))}/>
           <div>Порог: {(p.thresholdBytes/1_000_000_000).toFixed(2)} ГБ</div>
