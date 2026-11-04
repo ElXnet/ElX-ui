@@ -7,6 +7,7 @@ import type { Detail, ScheduleSpec, ScheduleCreated, RevokeResult, Session, Devi
 const { Title, Text } = Typography;
 type Account = { id: string; email: string; csrf: string };
 type Entitlements = {items: string[]};
+type CheckoutOrder = {id:string;requestId:string;entitlementId?:string;amountMinor:number;currency:string;extraDevices:number;status:'pending'|'paid';expiresAt:string};
 type LKError = {error?:string};
 const rawBase = window.X_UI_BASE_PATH || '/';
 const base = rawBase.replace(/\/$/, '');
@@ -42,6 +43,12 @@ function LKApp(){
  const [password,setPassword]=useState('');
  const [invite,setInvite]=useState('');
  const [claimCode,setClaimCode]=useState('');
+ const [checkoutOpen,setCheckoutOpen]=useState(false);
+ const [checkoutRenew,setCheckoutRenew]=useState(false);
+ const [checkoutExtras,setCheckoutExtras]=useState(0);
+ const [order,setOrder]=useState<CheckoutOrder|null>(null);
+ const [orderBusy,setOrderBusy]=useState(false);
+ const checkoutAttempt=useRef<{key:string;id:string}|null>(null);
  const [items,setItems]=useState<string[]>([]);
  const [selected,setSelected]=useState('');
  const [detail,setDetail]=useState<Detail|null>(null);
@@ -155,6 +162,37 @@ function LKApp(){
    },
   });
  };
+ async function createCheckout(){
+  if(!account||orderBusy)return;
+  const target=checkoutRenew?selected:'';
+  if(checkoutRenew&&!target){apiMessage.error('Выберите подписку для продления');return;}
+  const key=target+':'+checkoutExtras;
+  if(!checkoutAttempt.current||checkoutAttempt.current.key!==key){
+   checkoutAttempt.current={key,id:crypto.randomUUID()};
+  }
+  setOrderBusy(true);
+  try{
+   const result=await request<CheckoutOrder>('/orders','POST',{
+    requestId:checkoutAttempt.current.id,entitlementId:target,extraDevices:checkoutExtras,
+   },account.csrf);
+   setOrder(result);
+   setCheckoutOpen(false);
+   checkoutAttempt.current=null;
+   apiMessage.info('Заказ создан. Оплата подтверждается отдельным сервисом; создание заказа не активирует VPN.');
+  }catch(e){apiMessage.error(e instanceof Error?e.message:'Не удалось создать заказ');}
+  finally{setOrderBusy(false);}
+ }
+ async function refreshOrder(){
+  if(!order)return;
+  setOrderBusy(true);
+  try{
+   const result=await request<CheckoutOrder>('/orders/'+encodeURIComponent(order.id));
+   setOrder(result);
+   if(result.status==='paid')await loadItems();
+  }catch(e){apiMessage.error(e instanceof Error?e.message:'Не удалось проверить статус заказа');}
+  finally{setOrderBusy(false);}
+ }
+
  async function createSchedule(){
   if(!account||!detail||!detail.rateBudget||busy)return;
   const thresholdBytes=Math.round(thresholdGB*1_000_000_000);
@@ -201,6 +239,18 @@ function LKApp(){
     <Alert type="info" showIcon title="Управление подписками"
      description="Ссылка на подписку предоставляет только подключение и диагностику. Отключение устройств и управление FUP доступны после входа в этот аккаунт."/>
     <Card size="small" title="Ваши подписки" style={{marginTop:16}}>
+      <Space wrap style={{marginBottom:12}}>
+       <Button onClick={()=>{setCheckoutRenew(false);setCheckoutExtras(0);setCheckoutOpen(true);}}>Купить подписку</Button>
+       <Button disabled={!selected} onClick={()=>{setCheckoutRenew(true);setCheckoutExtras(0);setCheckoutOpen(true);}}>Продлить выбранную</Button>
+      </Space>
+      {order&&<Alert type={order.status==='paid'?'success':'info'} showIcon
+       title={order.status==='paid'?'Платёж подтверждён':'Заказ ожидает подтверждения оплаты'}
+       description={<Space direction="vertical">
+        <Text copyable>Заказ: {order.id}</Text>
+        <Text>{(order.amountMinor/100).toLocaleString('ru-RU')} ₽, устройств: {2+order.extraDevices}. Срок оплаты: {new Date(order.expiresAt).toLocaleString('ru-RU')}.</Text>
+        <Text type="secondary">Проверка поступления средств выполняется отдельным платёжным сервисом. Заказ сам по себе не подтверждает оплату.</Text>
+        <Button loading={orderBusy} onClick={refreshOrder}>Проверить статус</Button>
+       </Space>} style={{marginBottom:12}}/>}
      <Space wrap>
       {items.map(id=><Button key={id} type={selected===id?'primary':'default'} onClick={()=>setSelected(id)}>{id.slice(0,8)}…</Button>)}
      </Space>
@@ -259,6 +309,21 @@ function LKApp(){
     </Space>}
    </>}
   </div>
+  <Modal title={checkoutRenew?'Продление подписки':'Новая подписка'} open={checkoutOpen}
+   okText="Создать заказ" cancelText="Отмена" okButtonProps={{loading:orderBusy}}
+   onCancel={()=>setCheckoutOpen(false)} onOk={createCheckout}>
+   <Space direction="vertical" style={{width:'100%'}}>
+    <Text>Тариф: 500 ₽ за 30 дней, 2 активных устройства. Максимум 2 дополнительных устройства по 200 ₽ за каждое.</Text>
+    <Select aria-label="Дополнительные устройства" value={checkoutExtras}
+     onChange={v=>setCheckoutExtras(v)} options={[
+      {value:0,label:'2 устройства — 500 ₽'},
+      {value:1,label:'3 устройства — 700 ₽'},
+      {value:2,label:'4 устройства — 900 ₽'},
+     ]}/>
+    <Text>Стоимость: {(500+200*checkoutExtras).toLocaleString('ru-RU')} ₽.</Text>
+    <Text type="secondary">После создания заказа платёж должен подтвердить отдельный сервис. Выдача доступа раньше подтверждения исключена.</Text>
+   </Space>
+  </Modal>
   <Modal title="Новое правило FUP" open={scheduleOpen} okText="Создать" cancelText="Отмена" onOk={createSchedule}
    okButtonProps={{loading:busy}} onCancel={()=>setScheduleOpen(false)}>
    <Space direction="vertical" style={{width:'100%'}}>
