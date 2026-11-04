@@ -5067,6 +5067,10 @@
       "description": "A separate HTTP/HTTPS server that serves proxy subscription links (standard, JSON, and Clash) to clients. The server listens on its own port (default 2096) and is configured in Settings → Subscription. Fresh panels generate random path prefixes for each format; all paths remain configurable. Every subscription endpoint sets response headers for client apps to read traffic/expiry info."
     },
     {
+      "name": "ElX Control — administrator management",
+      "description": "Privileged, fixed-path proxy to a local Unix-socket Control service. These endpoints require a panel administrator identity or an admin-scoped bearer token; a customer subscription URL, node-sync token or login to the separate /lk customer cabinet is insufficient. Signed ElXray fences are required to release session slots. A new FUP schedule is staged until an operator explicitly activates it after verifying fresh signed usage."
+    },
+    {
       "name": "WebSocket",
       "description": "Real-time status updates via WebSocket. Connect once at <code>ws://<panel>/ws</code> to receive a stream of JSON messages without polling. Requires an authenticated session cookie (Bearer token auth is not supported). Each message has a <code>type</code> field that identifies the payload shape."
     }
@@ -16150,6 +16154,330 @@
           },
           "500": {
             "description": "Subscription generation failed."
+          }
+        }
+      }
+    },
+    "/panel/api/elx/entitlements": {
+      "get": {
+        "tags": [
+          "ElX Control — administrator management"
+        ],
+        "summary": "List purchased entitlements (administrator only).",
+        "operationId": "get_panel_api_elx_entitlements",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/elx/entitlements/{id}": {
+      "get": {
+        "tags": [
+          "ElX Control — administrator management"
+        ],
+        "summary": "View devices, sessions, shared rates, FUP and signed-usage coverage.",
+        "operationId": "get_panel_api_elx_entitlements_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Canonical entitlement UUID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/elx/entitlements/{id}/sessions/{owner}/drain": {
+      "post": {
+        "tags": [
+          "ElX Control — administrator management"
+        ],
+        "summary": "Queue a VPN session drain; hold the device slot until a signed core fence.",
+        "operationId": "post_panel_api_elx_entitlements_id_sessions_owner_drain",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Canonical entitlement UUID.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "description": "Session owner UUID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/elx/entitlements/{id}/devices/{device}/revoke": {
+      "post": {
+        "tags": [
+          "ElX Control — administrator management"
+        ],
+        "summary": "Revoke a purchased device and durably request draining its sessions.",
+        "operationId": "post_panel_api_elx_entitlements_id_devices_device_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Canonical entitlement UUID.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "device",
+            "in": "path",
+            "required": true,
+            "description": "Device UUID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/elx/entitlements/{id}/fup-schedules": {
+      "post": {
+        "tags": [
+          "ElX Control — administrator management"
+        ],
+        "summary": "Create an inactive daily, weekly or monthly FUP rule for later activation.",
+        "operationId": "post_panel_api_elx_entitlements_id_fup_schedules",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Canonical entitlement UUID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/elx/entitlements/{id}/fup-schedules/{schedule}/activate": {
+      "post": {
+        "tags": [
+          "ElX Control — administrator management"
+        ],
+        "summary": "Activate staged FUP only when all grants have fresh signed accounting.",
+        "operationId": "post_panel_api_elx_entitlements_id_fup_schedules_schedule_activate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Canonical entitlement UUID.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "schedule",
+            "in": "path",
+            "required": true,
+            "description": "FUP schedule UUID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/elx/entitlements/{id}/reconcile-fup": {
+      "post": {
+        "tags": [
+          "ElX Control — administrator management"
+        ],
+        "summary": "Queue signed FUP speed reductions; do not free budget before core barriers.",
+        "operationId": "post_panel_api_elx_entitlements_id_reconcile_fup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Canonical entitlement UUID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
           }
         }
       }
