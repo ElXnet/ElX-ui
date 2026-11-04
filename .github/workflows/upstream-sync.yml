@@ -1,0 +1,63 @@
+name: Sync 3X-UI upstream release
+
+on:
+  schedule:
+    - cron: '37 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/upstream-sync.yml'
+      - '.github/scripts/sync_3xui.py'
+      - '.github/scripts/test_sync_3xui.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-3xui-sync
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test upstream sync logic offline
+        run: python3 -m unittest discover -s .github/scripts -p test_sync_3xui.py -v
+
+  sync:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify GitHub App credentials
+        env:
+          CLIENT_ID: ${{ vars.ELX_SYNC_APP_CLIENT_ID }}
+          PRIVATE_KEY: ${{ secrets.ELX_SYNC_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$CLIENT_ID" ] || [ -z "$PRIVATE_KEY" ]; then
+            echo '::error::Missing ELX_SYNC_APP_CLIENT_ID variable or ELX_SYNC_APP_PRIVATE_KEY secret.'
+            exit 1
+          fi
+      - name: Create scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.ELX_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ELX_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ElX-ui
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: true
+      - name: Open upstream update PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: python3 .github/scripts/sync_3xui.py
