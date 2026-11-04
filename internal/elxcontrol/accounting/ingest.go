@@ -74,7 +74,7 @@ func ingestSample(ctx context.Context, tx *sql.Tx, s Sample) (Receipt, error) {
 	key := []any{s.NodeID, s.ExecutorID, s.Incarnation, s.AccountingID, s.Generation, s.PeriodID}
 	const where = `node_id=$1 AND executor_id=$2 AND incarnation=$3 AND accounting_id=$4 AND generation=$5 AND period_id=$6`
 	var seq, up, down int64
-	err = tx.QueryRowContext(ctx, `SELECT sequence,up_bytes,down_bytes FROM elx_accounting_streams
+	err := tx.QueryRowContext(ctx, `SELECT sequence,up_bytes,down_bytes FROM elx_accounting_streams
 		WHERE `+where+` FOR UPDATE`, key...).Scan(&seq, &up, &down)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Receipt{}, ErrStream
