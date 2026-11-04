@@ -63,6 +63,7 @@ func (b *managementBridge) forward(c *gin.Context, method, path string) {
 }
 
 func (b *managementBridge) forwardPayload(c *gin.Context, method, path string, payload []byte) {
+	c.Header("Cache-Control","no-store")
 	if !managementAuthorized(c) {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "msg": "administrator authentication required"})
 		return
