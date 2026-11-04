@@ -19,7 +19,7 @@ var (
 	ErrConflict = errors.New("reservation operation reused with different input")
 )
 
-type ReservationRequest struct {
+type reservationRequest struct {
 	EntitlementID uuid.UUID
 	DeviceID      uuid.UUID
 	NodeID        uuid.UUID
@@ -34,10 +34,9 @@ type Owner struct {
 	State      string
 }
 
-// Reserve is an internal transaction for requests already authenticated and
-// verified by admission. A proof hash binds retries but is not authentication.
-// A reservation alone grants no traffic. No time-based path frees ownership.
-func Reserve(ctx context.Context, db *sql.DB, req ReservationRequest) (Owner, error) {
+type verifyReservation func(context.Context, *sql.Tx, bool) error
+
+func reserve(ctx context.Context, db *sql.DB, req reservationRequest, verify verifyReservation) (Owner, error) {
 	if req.EntitlementID == uuid.Nil || req.DeviceID == uuid.Nil || req.NodeID == uuid.Nil ||
 		req.OperationID == uuid.Nil || req.KeyGeneration <= 0 || req.ProofHash == [32]byte{} {
 		return Owner{}, ErrInvalid
@@ -47,34 +46,9 @@ func Reserve(ctx context.Context, db *sql.DB, req ReservationRequest) (Owner, er
 		return Owner{}, err
 	}
 	defer tx.Rollback()
-	var limit int
-	var enabled bool
-	var validUntil time.Time
-	err = tx.QueryRowContext(ctx, `SELECT active_slots, enabled, valid_until
-		FROM elx_entitlements WHERE id=$1 FOR UPDATE`, req.EntitlementID).Scan(&limit, &enabled, &validUntil)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Owner{}, ErrDenied
-	}
+	limit, err := lockEligibleDevice(ctx, tx, req)
 	if err != nil {
 		return Owner{}, err
-	}
-
-	var keyGeneration int64
-	var revoked bool
-	err = tx.QueryRowContext(ctx, `SELECT key_generation, revoked FROM elx_devices
-		WHERE entitlement_id=$1 AND id=$2 FOR UPDATE`, req.EntitlementID, req.DeviceID).Scan(&keyGeneration, &revoked)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Owner{}, ErrDenied
-	}
-	if err != nil {
-		return Owner{}, err
-	}
-	var now time.Time
-	if err := tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
-		return Owner{}, err
-	}
-	if !enabled || !validUntil.After(now) || revoked || keyGeneration != req.KeyGeneration {
-		return Owner{}, ErrDenied
 	}
 
 	var owner Owner
@@ -88,6 +62,9 @@ func Reserve(ctx context.Context, db *sql.DB, req ReservationRequest) (Owner, er
 		if device != req.DeviceID || node != req.NodeID || priorKey != req.KeyGeneration || !bytes.Equal(proof, req.ProofHash[:]) {
 			return Owner{}, ErrConflict
 		}
+		if err := verify(ctx, tx, true); err != nil {
+			return Owner{}, err
+		}
 		if err := tx.Commit(); err != nil {
 			return Owner{}, err
 		}
@@ -96,6 +73,10 @@ func Reserve(ctx context.Context, db *sql.DB, req ReservationRequest) (Owner, er
 	if !errors.Is(err, sql.ErrNoRows) {
 		return Owner{}, err
 	}
+	if err := verify(ctx, tx, false); err != nil {
+		return Owner{}, err
+	}
+
 	var occupied int
 	var deviceOwned bool
 	err = tx.QueryRowContext(ctx, `SELECT count(*), COALESCE(bool_or(device_id=$2),false)
@@ -110,6 +91,7 @@ func Reserve(ctx context.Context, db *sql.DB, req ReservationRequest) (Owner, er
 	if occupied >= limit {
 		return Owner{}, ErrFull
 	}
+
 	owner.ID, err = uuid.NewRandom()
 	if err != nil {
 		return Owner{}, err
@@ -126,4 +108,40 @@ func Reserve(ctx context.Context, db *sql.DB, req ReservationRequest) (Owner, er
 		return Owner{}, err
 	}
 	return owner, nil
+}
+
+// Lock order is entitlement then device for all admission mutations.
+func lockEligibleDevice(ctx context.Context, tx *sql.Tx, req reservationRequest) (int, error) {
+	var err error
+	var limit int
+	var enabled bool
+	var validUntil time.Time
+	err = tx.QueryRowContext(ctx, `SELECT active_slots, enabled, valid_until
+		FROM elx_entitlements WHERE id=$1 FOR UPDATE`, req.EntitlementID).Scan(&limit, &enabled, &validUntil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrDenied
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	var keyGeneration int64
+	var revoked bool
+	err = tx.QueryRowContext(ctx, `SELECT key_generation, revoked FROM elx_devices
+		WHERE entitlement_id=$1 AND id=$2 FOR UPDATE`, req.EntitlementID, req.DeviceID).Scan(&keyGeneration, &revoked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrDenied
+	}
+	if err != nil {
+		return 0, err
+	}
+	var now time.Time
+	if err := tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
+		return 0, err
+	}
+	if !enabled || !validUntil.After(now) || revoked || keyGeneration != req.KeyGeneration {
+		return 0, ErrDenied
+	}
+
+	return limit, nil
 }
