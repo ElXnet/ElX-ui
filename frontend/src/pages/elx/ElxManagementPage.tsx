@@ -200,6 +200,14 @@ export default function ElxManagementPage() {
           <Progress percent={Number(percentUsed(p).toFixed(1))}/>
           <div>Порог: {(p.thresholdBytes/1_000_000_000).toFixed(2)} ГБ</div>
           <div>После порога: ↑{mbps(p.reducedUp)} / ↓{mbps(p.reducedDown)}</div>
+          {p.scheduleId && (() => {
+           const coverage = (detail.data.usageCoverage ?? []).find(x => x.scheduleId === p.scheduleId);
+           return coverage?.ready
+            ? <Alert type="success" showIcon title="Источники подписанного учёта подключены" description="Базовые замеры получены. Проверьте также работу агента, lease и исполнение политики ElXray."/>
+            : <Alert type="warning" showIcon title="Учёт трафика ещё не готов" description={coverage
+             ? 'Подключено потоков: '+coverage.assignedGrants+' из '+coverage.expectedGrants+', подтверждённый исходный замер: '+coverage.primedGrants
+             : 'Нет подтверждённых назначений потоков. Нельзя считать FUP действующим.'}/>;
+          })()}
          </Card>)}
        </Space>}
       </Spin>
