@@ -30,14 +30,14 @@ foreach ($name in $branches.Keys) {
     $dir = Join-Path $Workspace $name
     if (-not (Test-Path (Join-Path $dir '.git'))) {
         if (Test-Path $dir) { throw "$dir already exists but is not a Git repository" }
-        Invoke-Git @('clone', '--branch', $branch, '--single-branch', "https://github.com/ElXnet/$name.git", $dir)
+        Invoke-Git -Arguments @('clone', '--branch', $branch, '--single-branch', "https://github.com/ElXnet/$name.git", $dir)
     } else {
         $dirty = & git -C $dir status --porcelain
         if ($LASTEXITCODE -ne 0 -or $dirty) { throw "$dir has local changes; commit or stash them first" }
-        Invoke-Git @('-C', $dir, 'fetch', 'origin', $branch)
+        Invoke-Git -Arguments @('-C', $dir, 'fetch', 'origin', $branch)
         $current = (& git -C $dir branch --show-current).Trim()
         if ($current -ne $branch) { throw "$dir is on branch '$current', expected '$branch'. Switch branches manually." }
-        Invoke-Git @('-C', $dir, 'pull', '--ff-only', 'origin', $branch)
+        Invoke-Git -Arguments @('-C', $dir, 'pull', '--ff-only', 'origin', $branch)
     }
 }
 $ui = Join-Path $Workspace 'ElX-ui'
@@ -46,7 +46,7 @@ if ($LASTEXITCODE -ne 0 -or -not $linuxUi.StartsWith('/')) {
     throw 'Could not translate Windows workspace path to WSL. Check your WSL installation.'
 }
 if ($linuxUi.Contains("'")) { throw 'Workspace path cannot contain an apostrophe.' }
-$linuxCommand = "set -euo pipefail; cd '$linuxUi'; command -v go; command -v python3; command -v openssl; command -v docker; docker info >/dev/null; bash scripts/elx-test-local.sh"
+$linuxCommand = "set -euo pipefail; cd '$linuxUi'; command -v go; command -v python3; command -v openssl; command -v gcc; command -v docker; docker info >/dev/null; bash scripts/elx-test-local.sh"
 Write-Host "Running ElX tests via WSL in: $linuxUi" -ForegroundColor Cyan
 & wsl.exe -- bash -lc $linuxCommand
 if ($LASTEXITCODE -ne 0) { throw "ElX tests failed (exit code $LASTEXITCODE); inspect the WSL output above." }
