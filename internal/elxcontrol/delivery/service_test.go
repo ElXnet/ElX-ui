@@ -17,8 +17,11 @@ func (a testAuthority) Resolve(context.Context, journal.Target, string) (Assignm
 	return a.assignment, nil
 }
 
-func (a testAuthority) WithVerifiedApplied(context.Context, AppliedReceipt, func() error) error {
-	return a.verifyErr
+func (a testAuthority) WithVerifiedApplied(_ context.Context, _ AppliedReceipt, commit func() error) error {
+	if a.verifyErr != nil {
+		return a.verifyErr
+	}
+	return commit()
 }
 
 func TestRejectReceiptBeforeJournalWrite(t *testing.T) {
