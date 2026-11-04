@@ -180,6 +180,12 @@ func (j *ElXProfileJob) Run() {
 	}
 }
 
+// paidNodeConverged blocks premature fulfillment when the remote node
+// is offline, disabled or has unapplied configuration changes.
+func paidNodeConverged(enabled bool, status string, dirty bool) bool {
+	return enabled && status == "online" && !dirty
+}
+
 // paidProfileConverged prevents Control from treating one successful master
 // database update as proof that every configured remote node has the profile.
 // A remote inbound is considered applied only after the regular node sync
@@ -213,7 +219,7 @@ func (j *ElXProfileJob) paidProfileConverged(record *model.ClientRecord, inbound
 			if err != nil {
 				return err
 			}
-			if !enabled || status != "online" || dirty {
+			if !paidNodeConverged(enabled, status, dirty) {
 				return fmt.Errorf("paid profile not yet reconciled on remote node for inbound %d", id)
 			}
 		}
