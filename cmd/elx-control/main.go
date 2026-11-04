@@ -17,7 +17,7 @@ import (
 
 func run(ctx context.Context, args []string, dsn string) error {
 	if len(args) == 0 {
-		return errors.New("usage: elx-control migrate|serve-policy|enqueue-policy|apply-policy|policy-public-key|read-usage")
+		return errors.New("usage: elx-control migrate|serve-policy|enqueue-policy|apply-policy|policy-public-key|read-usage|collect-usage")
 	}
 	switch args[0] {
 	case "policy-public-key":
@@ -29,11 +29,11 @@ func run(ctx context.Context, args []string, dsn string) error {
 			return errors.New("usage: elx-control apply-policy")
 		}
 		return applyPolicy(ctx)
-	case "migrate", "serve-policy", "enqueue-policy":
+	case "migrate", "serve-policy", "enqueue-policy", "collect-usage":
 	default:
 		return errors.New("unknown elx-control command")
 	}
-	if args[0] != "enqueue-policy" && len(args) != 1 {
+	if args[0] != "enqueue-policy" && args[0] != "collect-usage" && len(args) != 1 {
 		return errors.New("unexpected arguments")
 	}
 	if dsn == "" {
@@ -57,6 +57,8 @@ func run(ctx context.Context, args []string, dsn string) error {
 		return servePolicy(ctx, db)
 	case "enqueue-policy":
 		return enqueuePolicy(setup, db, args[1:])
+	case "collect-usage":
+		return collectUsage(ctx, db, args[1:])
 	default:
 		return nil
 	}
