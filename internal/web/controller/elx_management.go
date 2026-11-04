@@ -159,6 +159,14 @@ func registerManagementRoutes(api *gin.RouterGroup) {
 		if err!=nil {c.AbortWithStatus(http.StatusBadRequest);return}
 		bridge.forwardPayload(c,http.MethodPost,"/v1/entitlements/"+id+"/fup-schedules",payload)
 	})
+	g.POST("/entitlements/:id/fup-schedules/:schedule/activate",func(c *gin.Context){
+		entitlement,schedule:=c.Param("id"),c.Param("schedule")
+		if !managementUUID(entitlement)||!managementUUID(schedule){
+			c.AbortWithStatus(http.StatusBadRequest);return
+		}
+		bridge.forward(c,http.MethodPost,
+			"/v1/entitlements/"+entitlement+"/fup-schedules/"+schedule+"/activate")
+	})
 	g.POST("/entitlements/:id/reconcile-fup", func(c *gin.Context) {
 		if !managementUUID(c.Param("id")) { c.AbortWithStatus(http.StatusBadRequest); return }
 		bridge.forward(c,http.MethodPost,"/v1/entitlements/"+c.Param("id")+"/reconcile-fup")
