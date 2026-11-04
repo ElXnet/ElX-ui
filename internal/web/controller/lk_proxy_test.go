@@ -67,4 +67,11 @@ func TestLKProxyRejectsInvalidDeviceAndUnknownEndpoint(t *testing.T){
  w=httptest.NewRecorder()
  engine.ServeHTTP(w,req)
  if w.Code!=404{t.Fatalf("unexpected public LK route: %d",w.Code)}
+	// Customer cookies must never get a path to enable FUP or bypass signed
+	// usage coverage, even if they own a subscription.
+	req=httptest.NewRequest(http.MethodPost,
+		"/lk/api/entitlements/00000000-0000-4000-8000-000000000001/fup-schedules/00000000-0000-4000-8000-000000000002/activate",nil)
+	w=httptest.NewRecorder()
+	engine.ServeHTTP(w,req)
+	if w.Code!=404{t.Fatalf("LK can activate FUP without trusted operator: %d",w.Code)}
 }
