@@ -1,0 +1,33 @@
+name: ElX OpenAPI docs snapshot sync
+
+on:
+  push:
+    branches: [feat/elx-management-stage3]
+    paths:
+      - ".github/workflows/elx-openapi-sync-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/elx-management-stage3
+          persist-credentials: true
+      - name: Keep site OpenAPI snapshot equal to panel
+        run: |
+          cp frontend/public/openapi.json docs/public/openapi.json
+          cmp frontend/public/openapi.json docs/public/openapi.json
+          git diff --check
+      - name: Commit site spec
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/public/openapi.json
+          if ! git diff --cached --quiet; then
+            git commit -m "docs(api): synchronize public OpenAPI snapshot with paid profile routes"
+            git push origin HEAD:feat/elx-management-stage3
+          fi
