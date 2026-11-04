@@ -93,6 +93,15 @@ func NewLKController(g *gin.RouterGroup) {
 	api.POST("/logout", func(c *gin.Context) { forward(c, http.MethodPost, "/logout", false) })
 	api.GET("/me", func(c *gin.Context) { forward(c, http.MethodGet, "/me", false) })
 	api.POST("/claim", func(c *gin.Context) { forward(c, http.MethodPost, "/claim", true) })
+	api.POST("/orders",func(c *gin.Context){
+		forward(c,http.MethodPost,"/orders",true)
+	})
+	api.GET("/orders/:id",func(c *gin.Context){
+		if !managementUUID(c.Param("id")){
+			c.AbortWithStatus(http.StatusBadRequest);return
+		}
+		forward(c,http.MethodGet,"/orders/"+c.Param("id"),false)
+	})
 	api.GET("/entitlements", func(c *gin.Context) { forward(c, http.MethodGet, "/entitlements", false) })
 	api.GET("/entitlements/:id", func(c *gin.Context) {
 		if uuidRoute(c) {
