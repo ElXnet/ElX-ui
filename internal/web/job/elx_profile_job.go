@@ -154,8 +154,16 @@ func (j *ElXProfileJob) Run(){
 // A remote inbound is considered applied only after the regular node sync
 // reports it online and not dirty. The master runtime must also be running
 // without a held-back configuration.
-func (j *ElXProfileJob) paidProfileConverged(inbounds []int)error{
+func (j *ElXProfileJob) paidProfileConverged(record *model.ClientRecord,inbounds []int)error{
+ if record==nil||!record.Enable{
+  return errors.New("paid VPN profile is not enabled")
+ }
+ attached,err:=j.clientService.GetInboundIdsForRecord(record.Id)
+ if err!=nil{return err}
+ set:=make(map[int]bool,len(attached))
+ for _,id:=range attached{set[id]=true}
  for _,id:=range inbounds {
+  if !set[id]{return fmt.Errorf("paid VLESS profile missing from inbound %d",id)}
   inbound,err:=j.inboundService.GetInbound(id)
   if err!=nil{return err}
   if inbound.Protocol!=model.VLESS {
@@ -224,7 +232,7 @@ func (j *ElXProfileJob) apply(task *elxProfileJob,inbounds []int)error{
 	// requested restart), retry may ACK only when the current Xray process
 	// is running and there is no held-back configuration.
 	if task.Operation=="enable"&&record.Enable{
-		return j.paidProfileConverged(inbounds)
+		return j.paidProfileConverged(record,inbounds)
 	}
 	client:=model.Client{
 		ID:record.UUID,Email:record.Email,SubID:record.SubID,
@@ -246,7 +254,9 @@ func (j *ElXProfileJob) apply(task *elxProfileJob,inbounds []int)error{
 		}
 		// A remote node's dirty flag is cleared only after convergence.
 		// Do not ACK the payment outbox while even one node is pending.
-		return j.paidProfileConverged(inbounds)
+		updated,err:=j.clientService.GetRecordByEmail(nil,task.ClientEmail)
+		if err!=nil{return err}
+		return j.paidProfileConverged(updated,inbounds)
 	}
 	return nil
 }
