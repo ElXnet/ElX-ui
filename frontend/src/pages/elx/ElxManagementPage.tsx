@@ -4,7 +4,7 @@ import { Alert, Button, Card, ConfigProvider, Layout, Modal, Progress, Space, Sp
 import AppSidebar from '@/layouts/AppSidebar';
 import { useTheme } from '@/hooks/useTheme';
 import { elxManagement, mbps, occupancy, percentUsed } from '@/api/elx-management';
-import type { Entitlement, Session } from '@/api/elx-management';
+import type { Entitlement, Session, Device } from '@/api/elx-management';
 const { Title, Text } = Typography;
 export default function ElxManagementPage() {
  const {antdThemeConfig}=useTheme();
@@ -32,6 +32,27 @@ export default function ElxManagementPage() {
      await refresh();
     } catch(e) {messages.error(e instanceof Error?e.message:'Ошибка отключения');}
     finally {setBusy(null);}
+   },
+  });
+ };
+ const revoke=(device:Device)=>{
+  if (!selected || busy || device.revoked) return;
+  modal.confirm({
+   title:'Отозвать устройство?',
+   content:'Новые сессии будут запрещены. Текущие соединения отключает агент ElXray; занятый слот освобождается только после подписанного подтверждения ядра.',
+   okText:'Отозвать устройство',cancelText:'Отмена',okButtonProps:{danger:true},
+   onOk:async()=>{
+    setBusy(device.id);
+    try {
+     const result=await elxManagement.revoke(selected,device.id);
+     if(result.undrainable>0){
+      messages.warning('Устройство отозвано. Не удалось автоматически отключить '+result.undrainable+' старых сессий без доверенной привязки; слоты сохранены.');
+     } else {
+      messages.info('Устройство отозвано. Ожидают подтверждения ядра: '+result.drainQueued+' сессий.');
+     }
+     await refresh();
+    } catch(e){messages.error(e instanceof Error?e.message:'Ошибка отзыва устройства');}
+    finally{setBusy(null);}
    },
   });
  };
@@ -86,6 +107,8 @@ export default function ElxManagementPage() {
           {title:'ID',dataIndex:'id',render:(id:string)=><Text copyable>{id}</Text>},
           {title:'Поколение ключа',dataIndex:'keyGeneration'},
           {title:'Состояние',dataIndex:'revoked',render:(v:boolean)=><Tag color={v?'error':'success'}>{v?'Отозвано':'Действует'}</Tag>},
+          {title:'Действие',render:(_:unknown,d:Device)=><Button size="small" danger disabled={busy!==null||d.revoked}
+           loading={busy===d.id} onClick={()=>revoke(d)}>Отозвать</Button>},
          ]}/>
         <Title level={5}>VPN-сессии</Title>
         {detail.data.sessionsTruncated&&<Alert type="warning" title="Отображаются только 200 последних сессий"/>}
