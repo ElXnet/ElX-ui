@@ -52,3 +52,26 @@ func TestPaidProfileNeverAcknowledgesWithoutEnabledRecord(t *testing.T) {
 		t.Fatalf("missing paid profile was acknowledged: %v", err)
 	}
 }
+
+func TestPaidNodeConvergenceIsRequiredBeforeProfileACK(t *testing.T) {
+	tests := []struct {
+		name    string
+		enabled bool
+		status  string
+		dirty   bool
+		ready   bool
+	}{
+		{"online-and-applied", true, "online", false, true},
+		{"not-synced", true, "online", true, false},
+		{"offline", true, "offline", false, false},
+		{"disabled-node", false, "online", false, false},
+		{"unknown-status", true, "", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := paidNodeConverged(tt.enabled, tt.status, tt.dirty); got != tt.ready {
+				t.Fatalf("paid node readiness = %v, want %v", got, tt.ready)
+			}
+		})
+	}
+}
