@@ -69,7 +69,7 @@ func TestManagementAdminProxyFixedPath(t *testing.T){
 	if err!=nil{t.Fatal(err)}
 	defer listener.Close()
 	defer os.Remove(path)
-	seen:=make(chan string,2)
+	seen:=make(chan string,3)
 	srv:=&http.Server{Handler:http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
 		seen<-r.Method+" "+r.URL.RequestURI()
 		w.Header().Set("Content-Type","application/json")
@@ -86,4 +86,11 @@ func TestManagementAdminProxyFixedPath(t *testing.T){
 	w:=managementRequest(engine,"GET","/panel/api/elx/entitlements?limit=10","")
 	if w.Code!=200 || !strings.Contains(w.Body.String(),`"success":true`){t.Fatalf("response: %d %s",w.Code,w.Body.String())}
 	if got:=<-seen;got!="GET /v1/entitlements?limit=10"{t.Fatalf("path: %s",got)}
+	w=managementRequest(engine,"POST","/panel/api/elx/entitlements/"+mgmtEntitlement+"/devices/"+mgmtOwner+"/revoke","")
+	if w.Code!=200 || !strings.Contains(w.Body.String(),`"success":true`) {
+		t.Fatalf("revoke bridge: %d %s",w.Code,w.Body.String())
+	}
+	if got:=<-seen;got!="POST /v1/entitlements/"+mgmtEntitlement+"/devices/"+mgmtOwner+"/revoke" {
+		t.Fatalf("revoke proxy path: %s",got)
+	}
 }
