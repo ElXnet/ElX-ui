@@ -56,7 +56,7 @@ function LKApp(){
  const [reducedDown,setReducedDown]=useState(5);
  const attempt=useRef<{fingerprint:string;id:string}|null>(null);
 
- async function loadItems(nextAccount:Account){
+ async function loadItems(){
   const res=await request<Entitlements>('/entitlements');
   setItems(res.items);
   setSelected((old)=>res.items.includes(old)?old:(res.items[0]||''));
@@ -71,7 +71,7 @@ function LKApp(){
   request<Account>('/me').then(async a=>{
    if(!valid)return;
    setAccount(a);
-   try{await loadItems(a);}catch{if(valid)apiMessage.error('Не удалось загрузить подписки');}
+   try{await loadItems();}catch{if(valid)apiMessage.error('Не удалось загрузить подписки');}
   }).catch(()=>{if(valid)setAccount(null);})
     .finally(()=>{if(valid)setChecking(false);});
   return ()=>{valid=false;};
@@ -93,7 +93,7 @@ function LKApp(){
    const a=await request<Account>(mode==='login'?'/login':'/register','POST',data);
    setPassword('');setInvite('');
    setAccount(a);
-   await loadItems(a);
+   await loadItems();
    apiMessage.success('Вход выполнен');
   }catch(e){apiMessage.error(e instanceof Error?e.message:'Ошибка входа');}
   finally{setBusy(false);}
@@ -110,7 +110,7 @@ function LKApp(){
   setBusy(true);
   try{
    await request('/claim','POST',{invite:claimCode},account.csrf);
-   setClaimCode('');await loadItems(account);
+   setClaimCode('');await loadItems();
    apiMessage.success('Подписка добавлена');
   }catch(e){apiMessage.error(e instanceof Error?e.message:'Не удалось добавить подписку');}
   finally{setBusy(false);}
@@ -121,7 +121,7 @@ function LKApp(){
   try{
    await request(path,'POST',undefined,account.csrf);
    await refreshDetail(selected);
-   await loadItems(account);
+   await loadItems();
    apiMessage.info('Запрос принят. Освобождение слота требует подписанного подтверждения ElXray.');
   }catch(e){apiMessage.error(e instanceof Error?e.message:'Ошибка управления');}
   finally{setBusy(false);}
@@ -149,7 +149,7 @@ function LKApp(){
      if(result.undrainable>0)apiMessage.warning('Устройство отозвано; '+result.undrainable+' сессий требуют ручного восстановления.');
      else apiMessage.info('Устройство отозвано; '+result.drainQueued+' сессий ожидают завершения.');
      await refreshDetail(selected);
-     await loadItems(account);
+     await loadItems();
     }catch(e){apiMessage.error(e instanceof Error?e.message:'Не удалось отозвать устройство');}
     finally{setBusy(false);}
    },
