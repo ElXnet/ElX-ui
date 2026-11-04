@@ -89,7 +89,11 @@ func QueueRateMove(ctx context.Context, db *sql.DB, entitlement string, target T
 	if pending {
 		return 0, ErrPending
 	}
-	if occupied.Up > limit.Up-max(current.Up, desired.Up) || occupied.Down > limit.Down-max(current.Down, desired.Down) {
+	// An active FUP cap can be below already committed grants. Allow
+	// monotone reductions to converge safely; refuse any directional increase
+	// unless both existing and pending commitments fit the effective cap.
+	if (desired.Up > current.Up && (desired.Up > limit.Up || occupied.Up > limit.Up-desired.Up)) ||
+		(desired.Down > current.Down && (desired.Down > limit.Down || occupied.Down > limit.Down-desired.Down)) {
 		return 0, ErrRateBudget
 	}
 
@@ -119,7 +123,27 @@ func lockBudget(ctx context.Context, tx *sql.Tx, entitlement string) (Rate, erro
 	var limit Rate
 	err := tx.QueryRowContext(ctx, `SELECT up_limit,down_limit FROM elx_rate_budgets
 		WHERE entitlement_id=$1 FOR UPDATE`, entitlement).Scan(&limit.Up, &limit.Down)
-	return limit, err
+	if err != nil {
+		return Rate{}, err
+	}
+	// Applied FUP can only tighten the purchased budget. The row lock above
+	// serializes rate moves; events are idempotent and monotonic for each
+	// period. All active periods contribute their strictest cap.
+	var fupUp, fupDown sql.NullInt64
+	err = tx.QueryRowContext(ctx, `SELECT MIN(e.reduced_up),MIN(e.reduced_down)
+		FROM elx_fup_events e JOIN elx_usage_periods p ON p.id=e.period_id
+		WHERE p.entitlement_id=$1 AND p.starts_at<=clock_timestamp()
+			AND p.ends_at>clock_timestamp()`, entitlement).Scan(&fupUp, &fupDown)
+	if err != nil {
+		return Rate{}, err
+	}
+	if fupUp.Valid {
+		limit.Up = min(limit.Up, fupUp.Int64)
+	}
+	if fupDown.Valid {
+		limit.Down = min(limit.Down, fupDown.Int64)
+	}
+	return limit, nil
 }
 
 // FinalizeRateMove needs an applied journal receipt. A direction that decreases
