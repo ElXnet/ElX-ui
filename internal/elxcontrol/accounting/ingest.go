@@ -71,10 +71,20 @@ func validateSample(authenticatedNode uuid.UUID, s Sample) error {
 // transition within the caller's transaction. The collector also holds pinned
 // core identity/assignment locks in this same transaction.
 func ingestSample(ctx context.Context, tx *sql.Tx, s Sample) (Receipt, error) {
+	// Serialize the threshold transition against all rate-grant mutations.
+	// Without this lock a concurrent increase could commit after the sample
+	// crossed FUP while still observing the earlier (larger) budget.
+	var entitlement uuid.UUID
+	err := tx.QueryRowContext(ctx, `SELECT b.entitlement_id
+		FROM elx_rate_budgets b JOIN elx_usage_periods p ON p.entitlement_id=b.entitlement_id
+		WHERE p.id=$1 FOR UPDATE OF b`, s.PeriodID).Scan(&entitlement)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Receipt{}, err
+	}
 	key := []any{s.NodeID, s.ExecutorID, s.Incarnation, s.AccountingID, s.Generation, s.PeriodID}
 	const where = `node_id=$1 AND executor_id=$2 AND incarnation=$3 AND accounting_id=$4 AND generation=$5 AND period_id=$6`
 	var seq, up, down int64
-	err := tx.QueryRowContext(ctx, `SELECT sequence,up_bytes,down_bytes FROM elx_accounting_streams
+	err = tx.QueryRowContext(ctx, `SELECT sequence,up_bytes,down_bytes FROM elx_accounting_streams
 		WHERE `+where+` FOR UPDATE`, key...).Scan(&seq, &up, &down)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Receipt{}, ErrStream
