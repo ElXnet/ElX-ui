@@ -23,6 +23,9 @@ var deviceProofSchema string
 //go:embed 004_accounting.sql
 var accountingSchema string
 
+//go:embed 005_rate_grants.sql
+var rateGrantSchema string
+
 // Migrate installs the journal schema in the Control database. The database
 // role must have DDL privileges in its configured schema.
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -39,7 +42,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	)`); err != nil {
 		return err
 	}
-	for i, ddl := range []string{schema, sessionSchema, deviceProofSchema, accountingSchema} {
+	for i, ddl := range []string{schema, sessionSchema, deviceProofSchema, accountingSchema, rateGrantSchema} {
 		if err := applyMigration(ctx, tx, i+1, ddl); err != nil {
 			return err
 		}
