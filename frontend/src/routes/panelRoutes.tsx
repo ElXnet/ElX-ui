@@ -42,7 +42,12 @@ export const PANEL_ROUTES: PanelRoute[] = [
   { path: '/clients', titleKey: 'menu.clients', icon: TeamOutlined, component: ClientsPage },
   { path: '/groups', titleKey: 'menu.groups', icon: TagsOutlined, component: GroupsPage },
   { path: '/nodes', titleKey: 'menu.nodes', icon: ClusterOutlined, component: NodesPage },
-  { path: '/elx', titleKey: 'menu.elxControl', icon: ClusterOutlined, component: ElxManagementPage },
+  {
+    path: '/elx',
+    titleKey: 'menu.elxControl',
+    icon: ClusterOutlined,
+    component: ElxManagementPage,
+  },
   { path: '/hosts', titleKey: 'menu.hosts', icon: GlobalOutlined, component: HostsPage },
   { path: '/outbound', titleKey: 'menu.outbounds', icon: ExportOutlined, component: XrayPage },
   { path: '/routing', titleKey: 'menu.routing', icon: SwapOutlined, component: XrayPage },

@@ -367,10 +367,10 @@ func (s *Server) startTask(restartXray bool, loc *time.Location) {
 	// A separate external payment verifier signs settlement events for
 	// Control. The panel only fulfills Control's durable, trusted jobs.
 	// Only the master with ELX_MANAGEMENT_SOCKET configured runs this worker.
-	if os.Getenv("ELX_MANAGEMENT_SOCKET")!=""{
-		elxProvision:=job.NewElXProfileJob()
-		_,_ = s.cron.AddJob("@every 10s",elxProvision)
-		common.GoRecover("elx-profile-provision",elxProvision.Run)
+	if os.Getenv("ELX_MANAGEMENT_SOCKET") != "" {
+		elxProvision := job.NewElXProfileJob()
+		_, _ = s.cron.AddJob("@every 10s", elxProvision)
+		common.GoRecover("elx-profile-provision", elxProvision.Run)
 	}
 
 	// Outbound subscription auto-refresh (respects per-sub updateInterval)
