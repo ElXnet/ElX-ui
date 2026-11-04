@@ -193,7 +193,16 @@ func (j *ElXProfileJob) apply(task *elxProfileJob,inbounds []int)error{
 	}
 	if record==nil{return errors.New("cannot update absent paid VPN profile")}
 	newExpiry:=max(record.ExpiryTime,expiry)
-	if task.Operation=="enable"&&record.Enable{return nil}
+	// A database row is NOT proof that the running ElXray accepted the
+	// updated VLESS configuration. After a panel restart (or a previously
+	// requested restart), retry may ACK only when the current Xray process
+	// is running and there is no held-back configuration.
+	if task.Operation=="enable"&&record.Enable{
+		if !j.xrayService.IsXrayRunning() || j.xrayService.GetHeldBackConfig()!=""{
+			return errors.New("ElXray has not started with the enabled paid profile")
+		}
+		return nil
+	}
 	client:=model.Client{
 		ID:record.UUID,Email:record.Email,SubID:record.SubID,
 		Flow:record.Flow,Security:record.Security,Enable:record.Enable,
@@ -207,5 +216,15 @@ func (j *ElXProfileJob) apply(task *elxProfileJob,inbounds []int)error{
 	if task.Operation=="enable"{client.Enable=true}
 	needRestart,err:=j.clientService.Update(&j.inboundService,record.Id,client,record.LimitHwid)
 	if needRestart{j.xrayService.SetToNeedRestart()}
-	return err
+	if err!=nil{return err}
+	if task.Operation=="enable"{
+		// Do not acknowledge a profile which is only stored in SQLite.
+		// Retry after the core restart; on replay the enabled branch above
+		// checks that the active runtime has come up successfully.
+		if needRestart || !j.xrayService.IsXrayRunning() ||
+			j.xrayService.GetHeldBackConfig()!=""{
+			return errors.New("paid profile stored; waiting for ElXray runtime to apply it")
+		}
+	}
+	return nil
 }
