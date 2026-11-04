@@ -149,6 +149,32 @@ func (j *ElXProfileJob) Run(){
 	}
 }
 
+// paidProfileConverged prevents Control from treating one successful master
+// database update as proof that every configured remote node has the profile.
+// A remote inbound is considered applied only after the regular node sync
+// reports it online and not dirty. The master runtime must also be running
+// without a held-back configuration.
+func (j *ElXProfileJob) paidProfileConverged(inbounds []int)error{
+ for _,id:=range inbounds {
+  inbound,err:=j.inboundService.GetInbound(id)
+  if err!=nil{return err}
+  if inbound.Protocol!=model.VLESS {
+   return errors.New("paid profile attached to a non-VLESS inbound")
+  }
+  if inbound.NodeID!=nil {
+   enabled,status,dirty,_,err:=(&service.NodeService{}).NodeSyncState(*inbound.NodeID)
+   if err!=nil{return err}
+   if !enabled||status!="online"||dirty {
+    return fmt.Errorf("paid profile not yet reconciled on remote node for inbound %d",id)
+   }
+  }
+ }
+ if !j.xrayService.IsXrayRunning() || j.xrayService.GetHeldBackConfig()!=""{
+  return errors.New("paid profile not yet applied to a running master ElXray")
+ }
+ return nil
+}
+
 func (j *ElXProfileJob) apply(task *elxProfileJob,inbounds []int)error{
 	if task==nil||!task.valid(){return errors.New("invalid Control profile job")}
 	expiry:=task.ValidUntil.UnixMilli()
@@ -198,10 +224,7 @@ func (j *ElXProfileJob) apply(task *elxProfileJob,inbounds []int)error{
 	// requested restart), retry may ACK only when the current Xray process
 	// is running and there is no held-back configuration.
 	if task.Operation=="enable"&&record.Enable{
-		if !j.xrayService.IsXrayRunning() || j.xrayService.GetHeldBackConfig()!=""{
-			return errors.New("ElXray has not started with the enabled paid profile")
-		}
-		return nil
+		return j.paidProfileConverged(inbounds)
 	}
 	client:=model.Client{
 		ID:record.UUID,Email:record.Email,SubID:record.SubID,
@@ -218,13 +241,12 @@ func (j *ElXProfileJob) apply(task *elxProfileJob,inbounds []int)error{
 	if needRestart{j.xrayService.SetToNeedRestart()}
 	if err!=nil{return err}
 	if task.Operation=="enable"{
-		// Do not acknowledge a profile which is only stored in SQLite.
-		// Retry after the core restart; on replay the enabled branch above
-		// checks that the active runtime has come up successfully.
-		if needRestart || !j.xrayService.IsXrayRunning() ||
-			j.xrayService.GetHeldBackConfig()!=""{
-			return errors.New("paid profile stored; waiting for ElXray runtime to apply it")
+		if needRestart {
+			return errors.New("paid profile stored; waiting for ElXray restart")
 		}
+		// A remote node's dirty flag is cleared only after convergence.
+		// Do not ACK the payment outbox while even one node is pending.
+		return j.paidProfileConverged(inbounds)
 	}
 	return nil
 }
