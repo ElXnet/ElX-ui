@@ -69,7 +69,7 @@ func TestManagementAdminProxyFixedPath(t *testing.T){
 	if err!=nil{t.Fatal(err)}
 	defer listener.Close()
 	defer os.Remove(path)
-	seen:=make(chan string,3)
+	seen:=make(chan string,5)
 	srv:=&http.Server{Handler:http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
 		seen<-r.Method+" "+r.URL.RequestURI()
 		w.Header().Set("Content-Type","application/json")
@@ -93,4 +93,26 @@ func TestManagementAdminProxyFixedPath(t *testing.T){
 	if got:=<-seen;got!="POST /v1/entitlements/"+mgmtEntitlement+"/devices/"+mgmtOwner+"/revoke" {
 		t.Fatalf("revoke proxy path: %s",got)
 	}
+	w=managementRequest(engine,"POST",
+		"/panel/api/elx/entitlements/"+mgmtEntitlement+"/fup-schedules/"+mgmtOwner+"/activate","")
+	if w.Code!=200{t.Fatalf("activation proxy: %d %s",w.Code,w.Body.String())}
+	if got:=<-seen;got!="POST /v1/entitlements/"+mgmtEntitlement+"/fup-schedules/"+mgmtOwner+"/activate"{
+		t.Fatalf("activation proxy route: %s",got)
+	}
+	w=managementRequest(engine,"POST",
+		"/panel/api/elx/entitlements/"+mgmtEntitlement+"/fup-schedules/not-a-uuid/activate","")
+	if w.Code!=400{t.Fatalf("invalid activation schedule accepted: %d",w.Code)}
+
+}
+
+func TestManagementScopeDeniesFUPActivation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine:=gin.New()
+	engine.Use(func(c *gin.Context){c.Set("api_token_scope",model.ApiScopeNodeSync);c.Next()})
+	registerManagementRoutes(engine.Group("/panel/api"))
+	req:=httptest.NewRequest(http.MethodPost,
+		"/panel/api/elx/entitlements/"+mgmtEntitlement+"/fup-schedules/"+mgmtOwner+"/activate",nil)
+	w:=httptest.NewRecorder()
+	engine.ServeHTTP(w,req)
+	if w.Code!=http.StatusForbidden{t.Fatalf("node-sync scope could activate FUP: %d",w.Code)}
 }
