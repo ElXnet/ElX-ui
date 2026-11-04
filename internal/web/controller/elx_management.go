@@ -68,6 +68,10 @@ func (b *managementBridge) forwardPayload(c *gin.Context, method, path string, p
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "msg": "administrator authentication required"})
 		return
 	}
+	if b==nil || b.client==nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable,gin.H{"success":false,"msg":"ElX Control is not configured"})
+		return
+	}
 	req, err := http.NewRequestWithContext(c.Request.Context(), method, "http://control.local"+path, bytes.NewReader(payload))
 	if err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -100,15 +104,10 @@ func registerManagementRoutes(api *gin.RouterGroup) {
 	// All routes are explicitly registered even when Control is not running:
 	// callers receive 503, never silently fall back to an unsafe SQL path.
 	bridge, err := newManagementBridge(strings.TrimSpace(os.Getenv("ELX_MANAGEMENT_SOCKET")))
-	if err != nil {
-		g.Any("/*path", func(c *gin.Context) {
-			if !managementAuthorized(c) {
-				c.AbortWithStatus(http.StatusForbidden)
-			} else {
-				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "msg": "ElX Control is not configured"})
-			}
-		})
-		return
+	if err!=nil {
+		// Register the same fixed API surface even when Control is absent;
+		// a wildcard accidentally exposes extra HTTP methods and breaks docs.
+		bridge=&managementBridge{}
 	}
 	g.GET("/entitlements", func(c *gin.Context) {
 		if !managementAuthorized(c) { c.AbortWithStatus(http.StatusForbidden); return }
