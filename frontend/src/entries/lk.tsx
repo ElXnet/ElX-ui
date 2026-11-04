@@ -177,7 +177,7 @@ function LKApp(){
    attempt.current=null;
    setScheduleOpen(false);
    await refreshDetail(selected);
-   apiMessage.success(result.alreadyExisted?'Расписание уже существует':'Расписание FUP создано');
+   apiMessage.info(result.alreadyExisted?'Расписание уже существует':'Расписание ожидает подключения подписанного учёта и активации оператором.');
   }catch(e){apiMessage.error(e instanceof Error?e.message:'Ошибка создания FUP');}
   finally{setBusy(false);}
  }
@@ -241,7 +241,7 @@ function LKApp(){
       <Alert type="warning" showIcon title="Для FUP требуется подтверждённый учёт трафика"
        description="Правило начнёт ограничивать трафик только при корректной привязке доверенных потоков учёта и работающем агенте Control."/>
       {detail.periods.map(p=><Card key={p.id} size="small" style={{marginTop:10}} title={(p.cadence||'Период')+' — '+p.direction}
-       extra={p.fupActive?<Tag color="warning">Снижение активно</Tag>:null}>
+       extra={p.scheduleId && p.scheduleEnabled===false?<Tag>Ожидает активации</Tag>:p.fupActive?<Tag color="warning">Снижение активно</Tag>:null}>
        <Text type="secondary">{new Date(p.startsAt).toLocaleString('ru-RU')} — {new Date(p.endsAt).toLocaleString('ru-RU')}</Text>
        <Progress percent={percent(p)}/>
        <div>Порог: {(p.thresholdBytes/1_000_000_000).toLocaleString('ru-RU')} ГБ</div>
