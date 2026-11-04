@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"bytes"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -57,15 +59,20 @@ func newManagementBridge(socket string) (*managementBridge, error) {
 }
 
 func (b *managementBridge) forward(c *gin.Context, method, path string) {
+	b.forwardPayload(c,method,path,nil)
+}
+
+func (b *managementBridge) forwardPayload(c *gin.Context, method, path string, payload []byte) {
 	if !managementAuthorized(c) {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "msg": "administrator authentication required"})
 		return
 	}
-	req, err := http.NewRequestWithContext(c.Request.Context(), method, "http://control.local"+path, nil)
+	req, err := http.NewRequestWithContext(c.Request.Context(), method, "http://control.local"+path, bytes.NewReader(payload))
 	if err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
+	if len(payload)>0 { req.Header.Set("Content-Type","application/json") }
 	resp, err := b.client.Do(req)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "msg": "ElX Control is unavailable"})
@@ -130,6 +137,26 @@ func registerManagementRoutes(api *gin.RouterGroup) {
 			return
 		}
 		bridge.forward(c,http.MethodPost,"/v1/entitlements/"+c.Param("id")+"/devices/"+c.Param("device")+"/revoke")
+	})
+	g.POST("/entitlements/:id/fup-schedules", func(c *gin.Context) {
+		id:=c.Param("id")
+		if !managementUUID(id){c.AbortWithStatus(http.StatusBadRequest);return}
+		var spec struct {
+			ScheduleID string `json:"scheduleId"`
+			Cadence string `json:"cadence"`
+			Timezone string `json:"timezone"`
+			Direction string `json:"direction"`
+			ThresholdBytes int64 `json:"thresholdBytes"`
+			ReducedUp int64 `json:"reducedUp"`
+			ReducedDown int64 `json:"reducedDown"`
+		}
+		c.Request.Body=http.MaxBytesReader(c.Writer,c.Request.Body,4096)
+		if c.ShouldBindJSON(&spec)!=nil || !managementUUID(spec.ScheduleID){
+			c.AbortWithStatus(http.StatusBadRequest);return
+		}
+		payload,err:=json.Marshal(spec)
+		if err!=nil {c.AbortWithStatus(http.StatusBadRequest);return}
+		bridge.forwardPayload(c,http.MethodPost,"/v1/entitlements/"+id+"/fup-schedules",payload)
 	})
 	g.POST("/entitlements/:id/reconcile-fup", func(c *gin.Context) {
 		if !managementUUID(c.Param("id")) { c.AbortWithStatus(http.StatusBadRequest); return }
