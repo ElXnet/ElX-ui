@@ -1,6 +1,8 @@
+import base64
 import json
 import os
 import pathlib
+import secrets
 import socket
 import subprocess
 import tempfile
@@ -11,6 +13,13 @@ import uuid
 binary = os.environ['ELXRAY_BIN']
 with tempfile.TemporaryDirectory() as tmp:
     processes = []
+    control = os.environ['ELX_CONTROL_BIN']
+    state = pathlib.Path(tmp) / 'policy'
+    state.write_text('{"Version":1}')
+    seed = pathlib.Path(str(state) + '.key')
+    seed.write_text(secrets.token_hex(32))
+    seed.chmod(0o600)
+    key = subprocess.check_output([control, 'policy-public-key', str(seed)], text=True).strip()
     echo = socket.socket()
     echo.bind(('127.0.0.1', 0))
     echo.listen()
@@ -52,8 +61,12 @@ with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp)/f'{name}.json'
         config['log'] = {'loglevel': 'warning'}
         path.write_text(json.dumps(config))
-        p = subprocess.Popen([binary, 'run', '-c', str(path)])
+        env = os.environ.copy()
+        if name == 'server':
+            env['ELXRAY_POLICY_STATE'] = str(state)
+        p = subprocess.Popen([binary, 'run', '-c', str(path)], env=env)
         processes.append(p)
+        return p
     def wait(port):
         for _ in range(100):
             try:
@@ -86,11 +99,23 @@ with tempfile.TemporaryDirectory() as tmp:
                         f'--expected-revision={old}',f'--revision={new}','--uplink-bps=10000',
                         '--downlink-bps=10000',f'--disabled={str(disabled).lower()}'],check=True,
                        stdout=subprocess.DEVNULL, timeout=3)
+    def usage(public_key=key):
+        return subprocess.run([control, 'read-usage', 'lab', public_key],
+                              env={**os.environ, 'ELXRAY_POLICY_LOOPBACK': f'127.0.0.1:{api}'},
+                              capture_output=True, timeout=6)
+    def sample():
+        result = usage()
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)
     try:
-        start('server',server)
+        server_process = start('server', server)
         start('client',client)
         wait(api)
         wait(socks)
+        initial = sample()
+        assert (initial['UpBytes'], initial['DownBytes']) == (0, 0)
+        wrong_key = base64.b64encode(bytes(32)).decode()
+        assert usage(wrong_key).returncode != 0
         with connect() as c:
             roundtrip(c)
             update(1,2,True)
@@ -108,6 +133,24 @@ with tempfile.TemporaryDirectory() as tmp:
         update(2,3,False)
         with connect() as c:
             roundtrip(c)
+        # A downstream reader can receive the last bytes before the writer
+        # returns and records the successful handoff.
+        deadline = time.monotonic() + 2
+        counted = sample()
+        while counted['DownBytes'] < 8 and time.monotonic() < deadline:
+            time.sleep(0.02)
+            counted = sample()
+        assert (counted['UpBytes'], counted['DownBytes']) == (8, 8), counted
+        assert counted['Sequence'] > initial['Sequence']
+        assert counted['Incarnation'] == initial['Incarnation']
+        server_process.terminate()
+        server_process.wait(timeout=5)
+        start('server', server)
+        wait(api)
+        restarted = sample()
+        assert restarted['Incarnation'] != counted['Incarnation']
+        assert (restarted['UpBytes'], restarted['DownBytes']) == (0, 0)
+        print('PASS: signed VLESS payload counters, wrong key rejected, restart changes incarnation')
         print('PASS: VLESS TCP idle connection closed, new traffic denied, re-enable works')
     finally:
         echo.close()

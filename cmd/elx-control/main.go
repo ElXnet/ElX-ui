@@ -17,11 +17,13 @@ import (
 
 func run(ctx context.Context, args []string, dsn string) error {
 	if len(args) == 0 {
-		return errors.New("usage: elx-control migrate|serve-policy|enqueue-policy|apply-policy|policy-public-key")
+		return errors.New("usage: elx-control migrate|serve-policy|enqueue-policy|apply-policy|policy-public-key|read-usage")
 	}
 	switch args[0] {
 	case "policy-public-key":
 		return printPolicyKey(args[1:])
+	case "read-usage":
+		return readUsage(ctx, args[1:])
 	case "apply-policy":
 		if len(args) != 1 {
 			return errors.New("usage: elx-control apply-policy")
