@@ -19,14 +19,16 @@ func NewLKController(g *gin.RouterGroup){
  g.GET("/lk/",func(c *gin.Context){serveDistPage(c,"lk.html")})
  api:=g.Group("/lk/api")
  bridge,err:=newManagementBridge(strings.TrimSpace(os.Getenv("ELX_MANAGEMENT_SOCKET")))
- if err!=nil{
-  api.Any("/*path",func(c *gin.Context){
-   c.AbortWithStatusJSON(http.StatusServiceUnavailable,gin.H{"error":"Control customer authentication is not configured"})
-  })
-  return
+ if err!=nil {
+  // Keep exactly the same endpoint surface even when Control is missing.
+  bridge=&managementBridge{}
  }
  forward:=func(c *gin.Context,method,path string,withBody bool){
   c.Header("Cache-Control","no-store")
+  if bridge.client==nil{
+   c.AbortWithStatusJSON(http.StatusServiceUnavailable,gin.H{"error":"Control customer authentication is not configured"})
+   return
+  }
   var payload []byte
   if withBody {
    if !strings.HasPrefix(c.GetHeader("Content-Type"),"application/json"){
