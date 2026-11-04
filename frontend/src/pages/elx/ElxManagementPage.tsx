@@ -127,21 +127,21 @@ export default function ElxManagementPage() {
    <Space direction="vertical" style={{width:'100%'}} size="middle">
     <Alert type="info" title="Ограничения тарифа" description="Сниженные скорости не могут быть выше приобретённого бюджета. Для подсчёта трафика нужна привязка подписки к доверенным потокам учёта на нодах."/>
     <Text>Период</Text>
-    <Select value={cadence} onChange={(value)=>setCadence(value as 'day'|'week'|'month')}
+    <Select aria-label="Период FUP" value={cadence} onChange={(value)=>setCadence(value as 'day'|'week'|'month')}
      options={[{value:'day',label:'День'},{value:'week',label:'Неделя (с понедельника)'},{value:'month',label:'Месяц'}]}/>
     <Text>Часовой пояс IANA</Text>
-    <Input value={timezone} onChange={(event)=>setTimezone(event.target.value)} maxLength={128} placeholder="Europe/Moscow"/>
+    <Input aria-label="Часовой пояс FUP" value={timezone} onChange={(event)=>setTimezone(event.target.value)} maxLength={128} placeholder="Europe/Moscow"/>
     <Text>Направление трафика</Text>
-    <Select value={direction} onChange={(value)=>setDirection(value as 'up'|'down'|'total')}
+    <Select aria-label="Направление учитываемого трафика" value={direction} onChange={(value)=>setDirection(value as 'up'|'down'|'total')}
      options={[{value:'total',label:'Суммарный трафик'},{value:'up',label:'Upload'},{value:'down',label:'Download'}]}/>
     <Text>Порог, ГБ</Text>
-    <InputNumber style={{width:'100%'}} min={0.01} step={1} value={thresholdGB}
+    <InputNumber aria-label="Порог трафика в гигабайтах" style={{width:'100%'}} min={0.01} step={1} value={thresholdGB}
      onChange={(value)=>setThresholdGB(Number(value??0))}/>
     <Text>После порога: upload, Мбит/с</Text>
-    <InputNumber style={{width:'100%'}} min={0.01} step={1} value={reducedUp}
+    <InputNumber aria-label="Сниженная скорость отправки в мегабитах в секунду" style={{width:'100%'}} min={0.01} step={1} value={reducedUp}
      onChange={(value)=>setReducedUp(Number(value??0))}/>
     <Text>После порога: download, Мбит/с</Text>
-    <InputNumber style={{width:'100%'}} min={0.01} step={1} value={reducedDown}
+    <InputNumber aria-label="Сниженная скорость получения в мегабитах в секунду" style={{width:'100%'}} min={0.01} step={1} value={reducedDown}
      onChange={(value)=>setReducedDown(Number(value??0))}/>
    </Space>
   </Modal>
