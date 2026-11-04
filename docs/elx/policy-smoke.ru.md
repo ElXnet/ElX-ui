@@ -7,7 +7,7 @@
 ```powershell
 $runner = Join-Path $env:TEMP "run-elx-windows.ps1"
 Invoke-WebRequest "https://raw.githubusercontent.com/ElXnet/ElX-ui/elx-control-journal/scripts/run-elx-windows.ps1" -OutFile $runner
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runner -Workspace "C:\\ElX-test"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runner -Workspace "C:\ElX-test"
 ```
 
 Скрипт клонирует или безопасно обновляет три рабочие ветки, откажется работать при незакоммиченных изменениях и запустит полную локальную проверку из `ElX-ui` через WSL. Код Control для этой проверки пока берётся из `ElX-ui/internal/elxcontrol`; отдельный `ElX-control` скачивается для сравнения, но не подменяет проверяемый модуль. При неудаче сохраните текст консоли и путь с тестовыми логами, напечатанный скриптом. Секреты/DSN не присылайте.
