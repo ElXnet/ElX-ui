@@ -161,6 +161,21 @@ func TestReserveLastSlotConcurrentAcrossNodes(t *testing.T) {
 	checkError(t, err, session.ErrOwned)
 
 	sig := ed25519.Sign(coreKey, session.FenceTranscript(fence))
+	checkError(t, session.ReleaseAfterFence(ctx, db, fence, corePub, sig), session.ErrFence)
+	_, err = db.ExecContext(ctx, `INSERT INTO elx_core_identities(node_id,incarnation,public_key)
+		VALUES ($1,$2,$3)`, fence.NodeID, fence.Incarnation, []byte(corePub))
+	checkError(t, err, nil)
+	foreignPub, foreignKey, err := ed25519.GenerateKey(nil)
+	checkError(t, err, nil)
+	checkError(t, session.ReleaseAfterFence(ctx, db, fence, foreignPub,
+		ed25519.Sign(foreignKey, session.FenceTranscript(fence))), session.ErrFence)
+	_, err = db.ExecContext(ctx, `UPDATE elx_core_identities SET revoked=true
+		WHERE node_id=$1 AND incarnation=$2`, fence.NodeID, fence.Incarnation)
+	checkError(t, err, nil)
+	checkError(t, session.ReleaseAfterFence(ctx, db, fence, corePub, sig), session.ErrFence)
+	_, err = db.ExecContext(ctx, `UPDATE elx_core_identities SET revoked=false
+		WHERE node_id=$1 AND incarnation=$2`, fence.NodeID, fence.Incarnation)
+	checkError(t, err, nil)
 	checkError(t, session.ReleaseAfterFence(ctx, db, fence, corePub, sig), nil)
 	next, err := submit(otherNode)
 	checkError(t, err, nil)
