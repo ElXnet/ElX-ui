@@ -2,9 +2,15 @@ name: ElX Control integration
 
 on:
   push:
-    branches: [elx-control-journal]
+    branches: [elx-control-journal, feat/elx-management-stage3]
     paths:
       - "cmd/elx-control/**"
+      - "internal/web/controller/elx_management*.go"
+      - "frontend/src/api/elx-management.ts"
+      - "frontend/src/pages/elx/**"
+      - "frontend/src/test/elx-management.test.ts"
+      - "frontend/src/routes/panelRoutes.tsx"
+      - "internal/web/translation/**"
       - "internal/elxcontrol/**"
       - "scripts/elx-*.sh"
       - "scripts/elx-*.py"
@@ -68,3 +74,25 @@ jobs:
         env:
           ELX_CONTROL_POSTGRES_DSN: "host=127.0.0.1 port=5432 user=elx dbname=elx_test password=elx_ci_only sslmode=disable"
         run: bash scripts/elx-test-local.sh
+
+  panel-and-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify Control / panel compile and authorization tests
+        run: |
+          go test ./internal/elxcontrol/management ./cmd/elx-control ./internal/web/controller -run 'TestManagement|TestCheckAPIAuth|TestPanelUpdateRequiresNodeAdminScope' -count=1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - name: Validate UI types and regression tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test -- src/test/elx-management.test.ts

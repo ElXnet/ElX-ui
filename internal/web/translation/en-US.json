@@ -125,7 +125,8 @@
     "openMenu": "Open menu",
     "pinSidebar": "Pin sidebar",
     "unpinSidebar": "Unpin sidebar",
-    "subFormats": "Sub Formats"
+    "subFormats": "Sub Formats",
+    "elxControl": "ElX Control"
   },
   "pages": {
     "login": {
