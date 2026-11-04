@@ -124,6 +124,13 @@ func registerManagementRoutes(api *gin.RouterGroup) {
 		if !managementUUID(c.Param("id")) || !managementUUID(c.Param("owner")) { c.AbortWithStatus(http.StatusBadRequest); return }
 		bridge.forward(c,http.MethodPost,"/v1/entitlements/"+c.Param("id")+"/sessions/"+c.Param("owner")+"/drain")
 	})
+	g.POST("/entitlements/:id/devices/:device/revoke", func(c *gin.Context) {
+		if !managementUUID(c.Param("id")) || !managementUUID(c.Param("device")) {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		bridge.forward(c,http.MethodPost,"/v1/entitlements/"+c.Param("id")+"/devices/"+c.Param("device")+"/revoke")
+	})
 	g.POST("/entitlements/:id/reconcile-fup", func(c *gin.Context) {
 		if !managementUUID(c.Param("id")) { c.AbortWithStatus(http.StatusBadRequest); return }
 		bridge.forward(c,http.MethodPost,"/v1/entitlements/"+c.Param("id")+"/reconcile-fup")
