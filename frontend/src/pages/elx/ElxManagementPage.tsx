@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, ConfigProvider, Layout, Modal, Progress, Space, Spin, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, ConfigProvider, Input, InputNumber, Layout, Modal, Progress, Select, Space, Spin, Table, Tag, Typography, message } from 'antd';
 import AppSidebar from '@/layouts/AppSidebar';
 import { useTheme } from '@/hooks/useTheme';
-import { elxManagement, mbps, occupancy, percentUsed } from '@/api/elx-management';
+import { bitsToBytesPerSecond, elxManagement, mbps, occupancy, percentUsed } from '@/api/elx-management';
 import type { Entitlement, Session, Device } from '@/api/elx-management';
 const { Title, Text } = Typography;
 export default function ElxManagementPage() {
@@ -13,6 +13,15 @@ export default function ElxManagementPage() {
  const [cursor,setCursor]=useState('');
  const [history,setHistory]=useState<string[]>([]);
  const [busy,setBusy]=useState<string|null>(null);
+ const [fupOpen,setFupOpen]=useState(false);
+ const [cadence,setCadence]=useState<'day'|'week'|'month'>('month');
+ const [direction,setDirection]=useState<'up'|'down'|'total'>('total');
+ const [timezone,setTimezone]=useState('UTC');
+ const [thresholdGB,setThresholdGB]=useState(10);
+ const [reducedUp,setReducedUp]=useState(5);
+ const [reducedDown,setReducedDown]=useState(5);
+ const scheduleAttempt=useRef<{fingerprint:string;id:string}|null>(null);
+
  const [messages,contextHolder]=message.useMessage();
  const [modal,modalHolder]=Modal.useModal();
  const listing=useQuery({queryKey:['elx','list',cursor],queryFn:()=>elxManagement.list(cursor),retry:false});
@@ -56,6 +65,32 @@ export default function ElxManagementPage() {
    },
   });
  };
+ const createSchedule=async()=>{
+  if(!selected || !detail.data?.rateBudget)return;
+  const thresholdBytes=Math.round(thresholdGB*1_000_000_000);
+  const specInput={cadence,timezone,direction,thresholdBytes,
+   reducedUp:bitsToBytesPerSecond(reducedUp),reducedDown:bitsToBytesPerSecond(reducedDown)};
+  const plan=detail.data.rateBudget;
+  if(!Number.isSafeInteger(thresholdBytes)||thresholdBytes<=0||
+    specInput.reducedUp<1||specInput.reducedDown<1||
+    specInput.reducedUp>plan.up||specInput.reducedDown>plan.down){
+    messages.error('Порог должен быть положительным, а сниженная скорость — в пределах приобретённого тарифа.');
+    return;
+  }
+  const fingerprint=JSON.stringify({entitlement:selected,...specInput});
+  if(!scheduleAttempt.current||scheduleAttempt.current.fingerprint!==fingerprint){
+    scheduleAttempt.current={fingerprint,id:crypto.randomUUID()};
+  }
+  setBusy('schedule');
+  try {
+   const result=await elxManagement.createSchedule(selected,{scheduleId:scheduleAttempt.current.id,...specInput});
+   messages.success(result.alreadyExisted?'Расписание уже существует':'Расписание FUP создано');
+   scheduleAttempt.current=null;
+   setFupOpen(false);
+   await refresh();
+  }catch(e){messages.error(e instanceof Error?e.message:'Не удалось создать расписание FUP');}
+  finally{setBusy(null);}
+ };
  const reconcile=async()=>{
   if(!selected)return;
   setBusy('fup');
@@ -68,6 +103,30 @@ export default function ElxManagementPage() {
  };
  return <ConfigProvider theme={antdThemeConfig}>
   {contextHolder}{modalHolder}
+  <Modal open={fupOpen} title="Создать расписание FUP" okText="Создать" cancelText="Отмена"
+   okButtonProps={{loading:busy==='schedule',disabled:busy!==null||!detail.data?.rateBudget}}
+   onOk={createSchedule} onCancel={()=>setFupOpen(false)}>
+   <Space direction="vertical" style={{width:'100%'}} size="middle">
+    <Alert type="info" title="Ограничения тарифа" description="Сниженные скорости не могут быть выше приобретённого бюджета. Для подсчёта трафика нужна привязка подписки к доверенным потокам учёта на нодах."/>
+    <Text>Период</Text>
+    <Select value={cadence} onChange={(value)=>setCadence(value as 'day'|'week'|'month')}
+     options={[{value:'day',label:'День'},{value:'week',label:'Неделя (с понедельника)'},{value:'month',label:'Месяц'}]}/>
+    <Text>Часовой пояс IANA</Text>
+    <Input value={timezone} onChange={(event)=>setTimezone(event.target.value)} maxLength={128} placeholder="Europe/Moscow"/>
+    <Text>Направление трафика</Text>
+    <Select value={direction} onChange={(value)=>setDirection(value as 'up'|'down'|'total')}
+     options={[{value:'total',label:'Суммарный трафик'},{value:'up',label:'Upload'},{value:'down',label:'Download'}]}/>
+    <Text>Порог, ГБ</Text>
+    <InputNumber style={{width:'100%'}} min={0.01} step={1} value={thresholdGB}
+     onChange={(value)=>setThresholdGB(Number(value??0))}/>
+    <Text>После порога: upload, Мбит/с</Text>
+    <InputNumber style={{width:'100%'}} min={0.01} step={1} value={reducedUp}
+     onChange={(value)=>setReducedUp(Number(value??0))}/>
+    <Text>После порога: download, Мбит/с</Text>
+    <InputNumber style={{width:'100%'}} min={0.01} step={1} value={reducedDown}
+     onChange={(value)=>setReducedDown(Number(value??0))}/>
+   </Space>
+  </Modal>
   <Layout className="page-shell"><AppSidebar/><Layout className="content-shell">
    <Layout.Content id="content-layout" className="content-area" style={{padding:20}}>
     <Space direction="vertical" size="middle" style={{width:'100%'}}>
@@ -131,7 +190,10 @@ export default function ElxManagementPage() {
           {title:'Эпоха',dataIndex:'epoch'},
           {title:'Статус',dataIndex:'pending',render:(v:boolean)=><Tag>{v?'Ожидает':'Зафиксирован'}</Tag>},
          ]}/>
-        <Space><Title level={5}>FUP</Title><Button loading={busy==='fup'} disabled={busy!==null} onClick={reconcile}>Согласовать FUP</Button></Space>
+        <Space wrap><Title level={5} style={{margin:0}}>FUP</Title>
+         <Button onClick={()=>setFupOpen(true)} disabled={busy!==null||!detail.data.rateBudget}>Создать расписание</Button>
+         <Button loading={busy==='fup'} disabled={busy!==null} onClick={reconcile}>Согласовать FUP</Button>
+        </Space>
         {detail.data.periods.map(p=><Card key={p.id} size="small" title={(p.cadence||'Период')+' · '+p.direction}
           extra={p.fupActive?<Tag color="warning">Снижение активно</Tag>:null}>
           <Text>{new Date(p.startsAt).toLocaleString('ru-RU')} — {new Date(p.endsAt).toLocaleString('ru-RU')}</Text>
