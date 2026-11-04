@@ -2,7 +2,7 @@ name: ElX Control integration
 
 on:
   push:
-    branches: [elx-control-journal, feat/elx-management-stage3]
+    branches: [main]
     paths:
       - "internal/web/controller/elx_management*.go"
       - "internal/web/controller/lk*.go"
@@ -25,7 +25,7 @@ on:
       - "go.mod"
       - "go.sum"
   pull_request:
-    branches: [elx-control-journal, main]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: ElXnet/ElX-control
-          ref: feat/elx-management-stage3
+          ref: main
           path: ElX-control
       - name: Reject embedded Control implementations
         run: python3 ElX-control/scripts/check-repository-boundary.py "$GITHUB_WORKSPACE"
@@ -71,13 +71,13 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: ElXnet/ElX-control
-          ref: feat/elx-management-stage3
+          ref: main
           path: ElX-control
       - name: Checkout ElXray integration branch
         uses: actions/checkout@v5
         with:
           repository: ElXnet/ElXray
-          ref: restrict-runtime-unlimited
+          ref: feat/policy-runtime-fencing
           path: ElXray
       - name: Set up Go from Control module
         uses: actions/setup-go@v6
