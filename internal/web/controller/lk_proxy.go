@@ -103,6 +103,11 @@ func NewLKController(g *gin.RouterGroup) {
 		forward(c,http.MethodGet,"/orders/"+c.Param("id"),false)
 	})
 	api.GET("/entitlements", func(c *gin.Context) { forward(c, http.MethodGet, "/entitlements", false) })
+	api.GET("/entitlements/:id/profile",func(c *gin.Context){
+		if uuidRoute(c) {
+			forward(c,http.MethodGet,"/entitlements/"+c.Param("id")+"/profile",false)
+		}
+	})
 	api.GET("/entitlements/:id", func(c *gin.Context) {
 		if uuidRoute(c) {
 			forward(c, http.MethodGet, "/entitlements/"+c.Param("id"), false)
