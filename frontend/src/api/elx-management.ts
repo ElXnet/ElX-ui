@@ -3,8 +3,9 @@ export interface Entitlement { id:string; activeSlots:number; validUntil:string;
 export interface Device {id:string; keyGeneration:number; revoked:boolean}
 export interface Session {id:string; deviceId:string; nodeId:string; profileId?:string; generation:number; state:string; reservedAt:string}
 export interface Grant {nodeId:string; resourceId:string; up:number; down:number; epoch:number; pending:boolean}
-export interface Period {id:string; startsAt:string; endsAt:string; direction:'up'|'down'|'total'; thresholdBytes:number; upBytes:number; downBytes:number; reducedUp:number; reducedDown:number; fupActive:boolean; cadence?:string; timezone?:string}
-export interface Detail {entitlement:Entitlement; devices:Device[]; sessions:Session[]; sessionsTruncated:boolean; rateBudget:{up:number;down:number}|null; grants:Grant[]; periods:Period[]}
+export interface Period {id:string; scheduleId?:string; startsAt:string; endsAt:string; direction:'up'|'down'|'total'; thresholdBytes:number; upBytes:number; downBytes:number; reducedUp:number; reducedDown:number; fupActive:boolean; cadence?:string; timezone?:string}
+export interface SignedCoverage {scheduleId:string;expectedGrants:number;assignedGrants:number;primedGrants:number;ready:boolean}
+export interface Detail {entitlement:Entitlement; devices:Device[]; sessions:Session[]; sessionsTruncated:boolean; rateBudget:{up:number;down:number}|null; grants:Grant[]; periods:Period[]; usageCoverage:SignedCoverage[]}
 export interface Page {items:Entitlement[]; nextCursor?:string}
 export interface Reconcile {entitlementId:string; active:boolean; queued:number; pending:number; unchanged:number}
 export interface RevokeResult {deviceId:string;revoked:boolean;alreadyRevoked:boolean;drainQueued:number;undrainable:number}
