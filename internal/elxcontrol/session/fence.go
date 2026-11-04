@@ -57,6 +57,22 @@ func ReleaseAfterFence(ctx context.Context, db *sql.DB, f Fence, coreKey ed25519
 	if err != nil {
 		return err
 	}
+	// The claimed key is not authority: resolve the pinned identity for this
+	// node and exact core boot from Control's durable registry. Never trust a
+	// key delivered in the fence payload or supplied by an untrusted caller.
+	var pinned []byte
+	var revoked bool
+	err = tx.QueryRowContext(ctx, `SELECT public_key,revoked FROM elx_core_identities
+		WHERE node_id=$1 AND incarnation=$2 FOR UPDATE`, f.NodeID, f.Incarnation).Scan(&pinned, &revoked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrFence
+	}
+	if err != nil {
+		return err
+	}
+	if revoked || !bytes.Equal(pinned, coreKey) {
+		return ErrFence
+	}
 	var state string
 	var prior []byte
 	err = tx.QueryRowContext(ctx, `SELECT state,fence_signature FROM elx_session_owners
