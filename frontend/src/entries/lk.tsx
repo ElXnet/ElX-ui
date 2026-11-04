@@ -75,15 +75,15 @@ function LKApp(){
   }).catch(()=>{if(valid)setAccount(null);})
     .finally(()=>{if(valid)setChecking(false);});
   return ()=>{valid=false;};
- },[]);
+ },[apiMessage]);
  useEffect(()=>{
-  if(!account||!selected){setDetail(null);return;}
+  if(!account||!selected)return;
   let live=true;
   request<Detail>('/entitlements/'+encodeURIComponent(selected)).then(data=>{
    if(live)setDetail(data);
   }).catch(err=>{if(live){setDetail(null);apiMessage.error(String(err));}});
   return ()=>{live=false;};
- },[account?.id,selected]);
+ },[account,selected,apiMessage]);
 
  async function submitAuth(){
   if(busy)return;
@@ -191,9 +191,9 @@ function LKApp(){
    </Space>
    {!account?<Card style={{maxWidth:450,margin:'40px auto'}} title={mode==='login'?'Вход':'Регистрация по приглашению'}>
     <Space direction="vertical" style={{width:'100%'}} size="middle">
-     <Input type="email" placeholder="E-mail" value={email} onChange={e=>setEmail(e.target.value)}/>
-     <Input.Password placeholder="Пароль" autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)} onPressEnter={submitAuth}/>
-     {mode==='register'&&<Input.Password placeholder="Код приглашения" value={invite} onChange={e=>setInvite(e.target.value)}/>}
+     <Input aria-label="Адрес электронной почты" type="email" placeholder="E-mail" value={email} onChange={e=>setEmail(e.target.value)}/>
+     <Input.Password aria-label="Пароль личного кабинета" placeholder="Пароль" autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)} onPressEnter={submitAuth}/>
+     {mode==='register'&&<Input.Password aria-label="Код приглашения на регистрацию" placeholder="Код приглашения" value={invite} onChange={e=>setInvite(e.target.value)}/>}
      <Button block type="primary" loading={busy} onClick={submitAuth}>{mode==='login'?'Войти':'Зарегистрироваться'}</Button>
      <Button type="link" onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'У меня есть приглашение':'Уже есть аккаунт'}</Button>
     </Space>
@@ -205,11 +205,11 @@ function LKApp(){
       {items.map(id=><Button key={id} type={selected===id?'primary':'default'} onClick={()=>setSelected(id)}>{id.slice(0,8)}…</Button>)}
      </Space>
      <Space style={{display:'flex',marginTop:12}} wrap>
-      <Input placeholder="Добавить подписку по приглашению" value={claimCode} onChange={e=>setClaimCode(e.target.value)} style={{width:320}}/>
+      <Input aria-label="Код приглашения для привязки подписки" placeholder="Добавить подписку по приглашению" value={claimCode} onChange={e=>setClaimCode(e.target.value)} style={{width:320}}/>
       <Button loading={busy} onClick={claim} disabled={!claimCode}>Добавить</Button>
      </Space>
     </Card>
-    {selected&&detail&&<Space direction="vertical" size="middle" style={{width:'100%',marginTop:16}}>
+    {selected&&detail&&detail.entitlement.id===selected&&<Space direction="vertical" size="middle" style={{width:'100%',marginTop:16}}>
      <Card title="Права подписки" extra={<Button onClick={()=>refreshDetail(selected)}>Обновить</Button>} size="small">
       <Space direction="vertical">
        <Text copyable>Подписка: {selected}</Text>
@@ -263,16 +263,16 @@ function LKApp(){
    okButtonProps={{loading:busy}} onCancel={()=>setScheduleOpen(false)}>
    <Space direction="vertical" style={{width:'100%'}}>
     <Text>Период</Text>
-    <Select value={cadence} onChange={v=>setCadence(v as 'day'|'week'|'month')}
+    <Select aria-label="Период FUP" value={cadence} onChange={v=>setCadence(v as 'day'|'week'|'month')}
      options={[{value:'day',label:'День'},{value:'week',label:'Неделя'},{value:'month',label:'Месяц'}]}/>
     <Text>Часовой пояс IANA</Text>
-    <Input value={timezone} onChange={e=>setTimezone(e.target.value)} placeholder="Europe/Moscow"/>
+    <Input aria-label="Часовой пояс FUP" value={timezone} onChange={e=>setTimezone(e.target.value)} placeholder="Europe/Moscow"/>
     <Text>Считать трафик</Text>
-    <Select value={direction} onChange={v=>setDirection(v as 'up'|'down'|'total')}
+    <Select aria-label="Направление учитываемого трафика" value={direction} onChange={v=>setDirection(v as 'up'|'down'|'total')}
      options={[{value:'total',label:'В обоих направлениях'},{value:'up',label:'Upload'},{value:'down',label:'Download'}]}/>
-    <Text>Порог (ГБ)</Text><InputNumber min={0.01} style={{width:'100%'}} value={thresholdGB} onChange={v=>setThresholdGB(Number(v??0))}/>
-    <Text>Снижение upload (Мбит/с)</Text><InputNumber min={0.01} style={{width:'100%'}} value={reducedUp} onChange={v=>setReducedUp(Number(v??0))}/>
-    <Text>Снижение download (Мбит/с)</Text><InputNumber min={0.01} style={{width:'100%'}} value={reducedDown} onChange={v=>setReducedDown(Number(v??0))}/>
+    <Text>Порог (ГБ)</Text><InputNumber aria-label="Порог трафика в гигабайтах" min={0.01} style={{width:'100%'}} value={thresholdGB} onChange={v=>setThresholdGB(Number(v??0))}/>
+    <Text>Снижение upload (Мбит/с)</Text><InputNumber aria-label="Сниженная скорость отправки в мегабитах в секунду" min={0.01} style={{width:'100%'}} value={reducedUp} onChange={v=>setReducedUp(Number(v??0))}/>
+    <Text>Снижение download (Мбит/с)</Text><InputNumber aria-label="Сниженная скорость получения в мегабитах в секунду" min={0.01} style={{width:'100%'}} value={reducedDown} onChange={v=>setReducedDown(Number(v??0))}/>
    </Space>
   </Modal>
  </ConfigProvider>;
