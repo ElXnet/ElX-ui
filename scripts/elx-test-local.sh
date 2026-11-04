@@ -45,18 +45,18 @@ if [[ -z "${ELX_CONTROL_POSTGRES_DSN:-}" ]]; then
 fi
 export ELX_TEST_POSTGRES_DSN="$ELX_CONTROL_POSTGRES_DSN"
 
-echo "ElX-ui revision: $(git -C "$root" rev-parse --short HEAD)"
+echo "ElX-control revision: $(git -C "$root" rev-parse --short HEAD)"
 echo "ElXray revision: $(git -C "$core" rev-parse --short HEAD)"
 export ELXRAY_BIN="$work/elxray" ELX_CONTROL_BIN="$work/elx-control"
 export TMPDIR="$work"
 (
     cd "$core"
-    go test -race -count=1 ./common/sessionfence ./common/subscriptionrate ./app/policy/... ./app/dispatcher ./proxy/vless/inbound
+    go test -race -count=1 -timeout 180s ./common/sessionfence ./common/subscriptionrate ./app/policy/... ./app/dispatcher ./proxy/vless/inbound
     go build -o "$ELXRAY_BIN" ./main
 )
 (
     cd "$root"
-    go test -race -count=1 ./internal/elxcontrol/... ./cmd/elx-control
+    go test -race -count=1 -timeout 180s ./internal/elxcontrol/... ./cmd/elx-control
     go build -o "$ELX_CONTROL_BIN" ./cmd/elx-control
     bash scripts/elx-policy-smoke.sh
     python3 scripts/elx-vless-stop-smoke.py
