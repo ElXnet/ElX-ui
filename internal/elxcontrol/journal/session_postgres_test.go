@@ -143,6 +143,41 @@ func TestReserveLastSlotConcurrentAcrossNodes(t *testing.T) {
 	stale.intent.KeyGeneration++
 	_, err = submit(stale)
 	checkError(t, err, session.ErrDenied)
+	corePub, coreKey, err := ed25519.GenerateKey(nil)
+	checkError(t, err, nil)
+	fence := session.Fence{OwnerID: owner.ID, Generation: owner.Generation,
+		NodeID: winner.req.intent.NodeID, Incarnation: winner.req.intent.Incarnation}
+	for _, wrong := range []session.Fence{
+		{OwnerID: owner.ID, Generation: owner.Generation + 1, NodeID: fence.NodeID, Incarnation: fence.Incarnation},
+		{OwnerID: owner.ID, Generation: owner.Generation, NodeID: otherNode.intent.NodeID, Incarnation: fence.Incarnation},
+		{OwnerID: owner.ID, Generation: owner.Generation, NodeID: fence.NodeID, Incarnation: uuid.New()},
+	} {
+		err = session.ReleaseAfterFence(ctx, db, wrong, corePub, ed25519.Sign(coreKey, session.FenceTranscript(wrong)))
+		checkError(t, err, session.ErrFence)
+	}
+	err = session.ReleaseAfterFence(ctx, db, fence, corePub, ed25519.Sign(winner.req.key, session.FenceTranscript(fence)))
+	checkError(t, err, session.ErrFence)
+	_, err = submit(otherNode)
+	checkError(t, err, session.ErrOwned)
+
+	sig := ed25519.Sign(coreKey, session.FenceTranscript(fence))
+	checkError(t, session.ReleaseAfterFence(ctx, db, fence, corePub, sig), nil)
+	next, err := submit(otherNode)
+	checkError(t, err, nil)
+	if next.Generation != owner.Generation+1 || next.ID == owner.ID {
+		t.Fatalf("new node did not get a new generation: %+v", next)
+	}
+	checkError(t, session.ReleaseAfterFence(ctx, db, fence, corePub, sig), nil)
+	replayed, err := submit(winner.req)
+	checkError(t, err, nil)
+	if replayed.State != "released" {
+		t.Fatalf("old proof revived released owner: %+v", replayed)
+	}
+	newReplay, err := submit(otherNode)
+	checkError(t, err, nil)
+	if newReplay != next {
+		t.Fatalf("old fence affected new owner: %+v", newReplay)
+	}
 	_, err = db.ExecContext(ctx, `UPDATE elx_entitlements SET valid_until=clock_timestamp() WHERE id=$1`, entitlement)
 	checkError(t, err, nil)
 	_, err = submit(winner.req)
