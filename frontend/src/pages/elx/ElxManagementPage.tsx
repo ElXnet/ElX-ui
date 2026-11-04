@@ -91,6 +91,24 @@ export default function ElxManagementPage() {
   }catch(e){messages.error(e instanceof Error?e.message:'Не удалось создать расписание FUP');}
   finally{setBusy(null);}
  };
+ const activate=(scheduleId:string)=>{
+  if (!selected||busy)return;
+  modal.confirm({
+   title:'Активировать FUP?',
+   content:'Активируйте только после проверки подписанного учёта, обязательных Control leases на всех нодах и применения политик ElXray. Если учёт остановится, новые leases перестанут выдаваться.',
+   okText:'Активировать',cancelText:'Отмена',
+   onOk:async()=>{
+    setBusy(scheduleId);
+    try{
+     await elxManagement.activateSchedule(selected,scheduleId);
+     messages.success('FUP активирован; теперь его порог учитывается при ограничении скорости.');
+     await refresh();
+    }catch(e){
+     messages.error(e instanceof Error?e.message:'Подписанный учёт ещё не готов к активации');
+    }finally{setBusy(null);}
+   },
+  });
+ };
  const reconcile=async()=>{
   if(!selected)return;
   setBusy('fup');
@@ -207,6 +225,13 @@ export default function ElxManagementPage() {
             : <Alert type="warning" showIcon title="Учёт трафика ещё не готов" description={coverage
              ? 'Привязано: '+coverage.assignedGrants+' из '+coverage.expectedGrants+', исходный замер: '+coverage.primedGrants+', свежие подписанные показания: '+coverage.freshGrants
              : 'Нет подтверждённых назначений потоков. Нельзя считать FUP действующим.'}/>;
+          })()}
+          {p.scheduleId && p.scheduleEnabled===false && (() => {
+           const coverage = (detail.data.usageCoverage ?? []).find(x=>x.scheduleId===p.scheduleId);
+           return <Button type="primary" style={{marginTop:12}} disabled={busy!==null||!coverage?.ready}
+            loading={busy===p.scheduleId} onClick={()=>activate(p.scheduleId!)}>
+            Активировать после проверки нод
+           </Button>;
           })()}
          </Card>)}
        </Space>}
