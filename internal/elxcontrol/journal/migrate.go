@@ -32,6 +32,9 @@ var sessionFenceSchema string
 //go:embed 007_core_identities.sql
 var coreIdentitySchema string
 
+//go:embed 008_accounting_assignments.sql
+var accountingAssignmentSchema string
+
 // Migrate installs the journal schema in the Control database. The database
 // role must have DDL privileges in its configured schema.
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -48,7 +51,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	)`); err != nil {
 		return err
 	}
-	for i, ddl := range []string{schema, sessionSchema, deviceProofSchema, accountingSchema, rateGrantSchema, sessionFenceSchema, coreIdentitySchema} {
+	for i, ddl := range []string{schema, sessionSchema, deviceProofSchema, accountingSchema, rateGrantSchema, sessionFenceSchema, coreIdentitySchema, accountingAssignmentSchema} {
 		if err := applyMigration(ctx, tx, i+1, ddl); err != nil {
 			return err
 		}
