@@ -107,6 +107,7 @@
     "saveQr": "ذخیره QR"
   },
   "menu": {
+    "elxControl": "مدیریت ElX",
     "theme": "تم",
     "dashboard": "نمای کلی",
     "inbounds": "ورودی‌ها",

@@ -107,6 +107,7 @@
     "saveQr": "QR'ı kaydet"
   },
   "menu": {
+    "elxControl": "ElX Yönetimi",
     "theme": "Tema",
     "dashboard": "Genel Bakış",
     "inbounds": "Gelen Bağlantılar",

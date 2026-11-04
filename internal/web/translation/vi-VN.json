@@ -107,6 +107,7 @@
     "saveQr": "Lưu QR"
   },
   "menu": {
+    "elxControl": "Quản lý ElX",
     "theme": "Chủ đề",
     "dashboard": "Trạng thái hệ thống",
     "inbounds": "Inbound",

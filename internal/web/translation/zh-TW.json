@@ -107,6 +107,7 @@
     "saveQr": "儲存 QR 碼"
   },
   "menu": {
+    "elxControl": "ElX 管理",
     "theme": "主題",
     "dashboard": "系統狀態",
     "inbounds": "入站",
