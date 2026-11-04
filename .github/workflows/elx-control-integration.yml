@@ -38,19 +38,19 @@ jobs:
 
     steps:
       - name: Checkout ElX-ui integration branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: ElX-ui
 
       - name: Checkout ElXray integration branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ElXnet/ElXray
           ref: restrict-runtime-unlimited
           path: ElXray
 
       - name: Setup Go toolchain
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: ElX-ui/go.mod
           cache: false
