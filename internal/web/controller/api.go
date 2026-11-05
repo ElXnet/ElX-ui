@@ -201,6 +201,7 @@ func (a *APIController) initRouter(g *gin.RouterGroup) {
 	api.Use(middleware.CSRFMiddleware(getRemoteIp))
 
 	api.GET("/openapi.json", ServeOpenAPISpec)
+	registerManagementRoutes(api)
 
 	// Inbounds API
 	inbounds := api.Group("/inbounds")

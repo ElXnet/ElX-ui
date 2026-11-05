@@ -265,6 +265,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	s.index = controller.NewIndexController(g)
 	s.panel = controller.NewXUIController(g)
 	s.api = controller.NewAPIController(g)
+	controller.NewLKController(g)
 
 	// Initialize WebSocket hub
 	s.wsHub = websocket.NewHub()
@@ -362,6 +363,15 @@ func (s *Server) startTask(restartXray bool, loc *time.Location) {
 	_, _ = s.cron.AddJob(cadenceNodeHeartbeat, job.NewNodeHeartbeatJob())
 
 	_, _ = s.cron.AddJob(cadenceNodeTraffic, job.NewNodeTrafficSyncJob())
+
+	// A separate external payment verifier signs settlement events for
+	// Control. The panel only fulfills Control's durable, trusted jobs.
+	// Only the master with ELX_MANAGEMENT_SOCKET configured runs this worker.
+	if os.Getenv("ELX_MANAGEMENT_SOCKET") != "" {
+		elxProvision := job.NewElXProfileJob()
+		_, _ = s.cron.AddJob("@every 10s", elxProvision)
+		common.GoRecover("elx-profile-provision", elxProvision.Run)
+	}
 
 	// Outbound subscription auto-refresh (respects per-sub updateInterval)
 	_, _ = s.cron.AddJob(cadenceOutboundSub, job.NewOutboundSubscriptionJob())

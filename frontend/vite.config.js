@@ -22,7 +22,7 @@ function resolveDBPath() {
   return '/etc/x-ui/x-ui.db';
 }
 
-const PANEL_API_PREFIXES = ['panel/api/', 'panel/csrf-token'];
+const PANEL_API_PREFIXES = ['panel/api/', 'panel/csrf-token', 'lk/api/'];
 
 let cachedBasePath = '/';
 
@@ -105,6 +105,7 @@ function bypassMigratedRoute(req) {
         return undefined;
       }
     }
+    if (stripped === 'lk' || stripped === 'lk/') return '/lk.html';
     if (stripped === 'panel' || stripped === 'panel/' || stripped.startsWith('panel/')) {
       return '/index.html';
     }
@@ -235,6 +236,7 @@ export default defineConfig({
       input: {
         index: path.resolve(import.meta.dirname, 'index.html'),
         login: path.resolve(import.meta.dirname, 'login.html'),
+        lk: path.resolve(import.meta.dirname, 'lk.html'),
         subpage: path.resolve(import.meta.dirname, 'subpage.html'),
       },
       output: {
@@ -286,7 +288,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '^/(?:[^/]+/)?(login|logout|getTwoFactorEnable|csrf-token|sponsors|panel|server)(?:/|$)': makeBackendProxy(BACKEND_TARGET),
+      '^/(?:[^/]+/)?(login|logout|getTwoFactorEnable|csrf-token|sponsors|panel|server|lk)(?:/|$)': makeBackendProxy(BACKEND_TARGET),
       '^/$': makeBackendProxy(BACKEND_TARGET),
       '^/[^/]+/$': makeBackendProxy(BACKEND_TARGET),
       '^/(?:[^/]+/)?ws$': {

@@ -125,7 +125,8 @@
     "openMenu": "Открыть меню",
     "pinSidebar": "Закрепить боковую панель",
     "unpinSidebar": "Открепить боковую панель",
-    "subFormats": "Форматы подписки"
+    "subFormats": "Форматы подписки",
+    "elxControl": "ElX Control"
   },
   "pages": {
     "login": {

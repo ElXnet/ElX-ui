@@ -107,6 +107,7 @@
     "saveQr": "Зберегти QR"
   },
   "menu": {
+    "elxControl": "Керування ElX",
     "theme": "Тема",
     "dashboard": "Огляд",
     "inbounds": "Вхідні",

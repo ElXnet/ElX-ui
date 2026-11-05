@@ -107,6 +107,7 @@
     "saveQr": "Uložiť QR kód"
   },
   "menu": {
+    "elxControl": "Správa ElX",
     "theme": "Vzhľad",
     "dashboard": "Prehľad",
     "inbounds": "Vstupy",

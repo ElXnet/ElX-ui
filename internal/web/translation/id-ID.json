@@ -107,6 +107,7 @@
     "saveQr": "Simpan QR"
   },
   "menu": {
+    "elxControl": "Manajemen ElX",
     "theme": "Tema",
     "dashboard": "Ikhtisar",
     "inbounds": "Inbound",

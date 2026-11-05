@@ -1,0 +1,119 @@
+name: ElX Control integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "internal/web/controller/elx_management*.go"
+      - "internal/web/controller/lk*.go"
+      - "internal/web/web.go"
+      - "frontend/lk.html"
+      - "frontend/src/entries/lk.tsx"
+      - "frontend/vite.config.js"
+      - "frontend/src/api/elx-management.ts"
+      - "frontend/src/pages/elx/**"
+      - "frontend/src/test/elx-management.test.ts"
+      - "frontend/src/routes/panelRoutes.tsx"
+      - "internal/web/translation/**"
+      - "docs/elx/**"
+      - "cmd/elx-control/**"
+      - "internal/elxcontrol/**"
+      - "scripts/elx-*.sh"
+      - "scripts/elx-*.py"
+      - "scripts/run-elx-windows.ps1"
+      - ".github/workflows/elx-control-integration.yml"
+      - "go.mod"
+      - "go.sum"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repository-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout UI integration branch
+        uses: actions/checkout@v5
+        with:
+          path: ElX-ui
+      - name: Checkout canonical Control
+        uses: actions/checkout@v5
+        with:
+          repository: ElXnet/ElX-control
+          ref: main
+          path: ElX-control
+      - name: Reject embedded Control implementations
+        run: python3 ElX-control/scripts/check-repository-boundary.py "$GITHUB_WORKSPACE"
+
+  control-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: elx
+          POSTGRES_PASSWORD: elx_ci_only
+          POSTGRES_DB: elx_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U elx -d elx_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout standalone Control branch
+        uses: actions/checkout@v5
+        with:
+          repository: ElXnet/ElX-control
+          ref: main
+          path: ElX-control
+      - name: Checkout ElXray integration branch
+        uses: actions/checkout@v5
+        with:
+          repository: ElXnet/ElXray
+          ref: main
+          path: ElXray
+      - name: Set up Go from Control module
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ElX-control/go.mod
+          cache: false
+      - name: Print tested revisions
+        run: |
+          go version
+          git -C ElX-control rev-parse HEAD
+          git -C ElXray rev-parse HEAD
+      - name: Run standalone Control and ElXray integration suite
+        working-directory: ElX-control
+        env:
+          ELX_CONTROL_POSTGRES_DSN: "host=127.0.0.1 port=5432 user=elx dbname=elx_test password=elx_ci_only sslmode=disable"
+        run: bash scripts/elx-test-local.sh
+
+  panel-and-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Compile panel and verify privileged and customer proxies
+        run: |
+          go test ./internal/web/controller -run 'TestManagement|TestLK|TestCheckAPIAuth|TestPanelUpdateRequiresNodeAdminScope' -count=1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - name: Typecheck, test and build panel and customer portal
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test -- src/test/elx-management.test.ts
+          npm run build

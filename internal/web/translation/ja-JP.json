@@ -107,6 +107,7 @@
     "saveQr": "QR を保存"
   },
   "menu": {
+    "elxControl": "ElX 管理",
     "theme": "テーマ",
     "dashboard": "ダッシュボード",
     "inbounds": "インバウンド",

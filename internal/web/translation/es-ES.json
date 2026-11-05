@@ -107,6 +107,7 @@
     "saveQr": "Guardar QR"
   },
   "menu": {
+    "elxControl": "Control de ElX",
     "theme": "Tema",
     "dashboard": "Estado del Sistema",
     "inbounds": "Entradas",
