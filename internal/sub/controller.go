@@ -406,6 +406,14 @@ func (a *SUBController) maybeServeSubPage(c *gin.Context) bool {
 	if !wantsHTML {
 		return false
 	}
+	// The HTML subscription page contains raw importable proxy links.
+	// Keep the established Happ HWID gate on this route too: otherwise
+	// opening ?view=html / ?html=1 (or an Accept: text/html request)
+	// reveals the same UUID that machine-readable routes protect.
+	// Read-only ?format=info is separate and deliberately strips links.
+	if !a.enforceHwid(c) {
+		return true
+	}
 	page, ok := a.buildSubPageData(c)
 	if !ok {
 		return true
