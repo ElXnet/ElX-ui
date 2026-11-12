@@ -133,15 +133,69 @@ func TestSubscriptionHwidGateAcrossBodyRoutes(t *testing.T) {
 	}
 }
 
-func TestSubscriptionHwidGateSkipsHtmlInfoPage(t *testing.T) {
+func TestSubscriptionHwidGateProtectsHtmlImportLinks(t *testing.T) {
 	router, subID := initHwidSubRouter(t, 1)
-
-	rec := requestSub(t, router, http.MethodGet, "/sub/"+subID, "", "text/html")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("HTML sub page status = %d, want 200, body=%q", rec.Code, rec.Body.String())
+	// All these routes can render a subscription page containing importable
+	// proxy URLs. Neither content negotiation nor a query alias may bypass
+	// the same HWID gate that already protects raw, JSON and Clash bodies.
+	for _, tc := range []struct {
+		path   string
+		accept string
+	}{
+		{"/sub/" + subID, "text/html"},
+		{"/sub/" + subID + "?html=1", ""},
+		{"/sub/" + subID + "?view=html", ""},
+		{"/json/" + subID + "?view=html", ""},
+		{"/clash/" + subID + "?view=html", ""},
+		{"/mihomo/" + subID + "?view=html", ""},
+		{"/clash-legacy/" + subID + "?view=html", ""},
+	} {
+		rec := requestSub(t, router, http.MethodGet, tc.path, "", tc.accept)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("%s without HWID returned %d, want 404", tc.path, rec.Code)
+		}
+		if rec.Header().Get("X-Hwid-Active") != "true" ||
+			rec.Header().Get("X-Hwid-Not-Supported") != "true" {
+			t.Fatalf("%s missing device denial headers: %#v", tc.path, rec.Header())
+		}
+		if rec.Body.Len() != 0 {
+			t.Fatalf("%s leaked a subscription page without HWID: %q", tc.path, rec.Body.String())
+		}
 	}
-	if rec.Header().Get("X-Hwid-Not-Supported") != "" {
-		t.Fatalf("HTML sub page should not be HWID-gated: %#v", rec.Header())
+
+	// A known HWID can still view its subscription page. As with a
+	// machine-readable subscription request, the first valid device takes
+	// one slot, and a second HWID cannot download configurations.
+	first := requestSub(t, router, http.MethodGet, "/sub/"+subID+"?view=html", "device-one", "")
+	if first.Code != http.StatusOK || first.Header().Get("X-Hwid-Active") != "true" {
+		t.Fatalf("registered Happ device cannot view HTML: %d %q", first.Code, first.Body.String())
+	}
+	second := requestSub(t, router, http.MethodGet, "/sub/"+subID+"?view=html", "device-two", "")
+	if second.Code != http.StatusNotFound ||
+		second.Header().Get("X-Hwid-Max-Devices-Reached") != "true" {
+		t.Fatalf("HTML route bypassed device limit: %d %#v", second.Code, second.Header())
+	}
+}
+
+func TestSubscriptionHwidInfoRemainsReadOnlyWithoutConfigLinks(t *testing.T) {
+	router, subID := initHwidSubRouter(t, 1)
+	// This endpoint intentionally does not register a HWID; it must never
+	// return the importable links exposed by the full HTML page.
+	rec := requestSub(t, router, http.MethodGet, "/sub/"+subID+"?format=info", "", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("read-only info unavailable: %d %q", rec.Code, rec.Body.String())
+	}
+	var result map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode info response: %v", err)
+	}
+	if _, exposed := result["links"]; exposed {
+		t.Fatalf("read-only info leaked proxy URLs: %#v", result["links"])
+	}
+	var count int64
+	if err := database.GetDB().Model(&model.ClientHwid{}).
+		Where("sub_id = ?", subID).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("read-only info consumed a device slot: %d, %v", count, err)
 	}
 }
 
